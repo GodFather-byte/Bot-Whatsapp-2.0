@@ -46,7 +46,7 @@ function setup(options = {}) {
   const handler = createMessageHandler({
     config: {},
     storage,
-    gemini: { generate: async ({ text, extraInstruction }) => { prompts.push({ text, extraInstruction }); return '**ok**'; } },
+    gemini: { generate: async ({ text, extraInstruction, assistant }) => { prompts.push({ text, extraInstruction, assistant }); return '**ok**'; } },
     allowlist: createAllowlist(options.allowed || []),
     rateLimiter: new RateLimiter(),
     stats: { totalMessages: 0, users: new Set(), errorEvents: [], rateLimitEvents: [], recentMessages: [] },
@@ -54,6 +54,7 @@ function setup(options = {}) {
     ownerNumbers: [OWNER],
     getStatus: () => ({ mongoConnected: false, bots: [{ numero: '5511000000000', conectado: true }] }),
     broadcastDelayMs: 0,
+    notifyOwner: false,
     ...options.handler
   });
   const sock = {
@@ -69,15 +70,16 @@ function setup(options = {}) {
 test('only the owner can use admin commands, also when identified by LID', async () => {
   const { from, sent, storage } = setup();
 
+  // Para quem não é o dono, "/admin" é texto comum: o assistente conversa e não revela nada.
   await from('5531777777777@s.whatsapp.net', '/admin status');
-  assert.equal(sent.at(-1).text, 'Apenas o dono do bot pode usar os comandos /admin.');
+  assert.equal(sent.at(-1).text, '*ok*');
 
   await from('424242@lid', '/admin status');
   assert.match(sent.at(-1).text, /Mensagens processadas/);
   assert.match(sent.at(-1).text, /🟢 5511000000000/);
 
   await from(`${OWNER}@s.whatsapp.net`, '/admin instrucoes Você atende uma pizzaria.');
-  await from(`${OWNER}@s.whatsapp.net`, '/admin horario seg-sab 25:00-18:00');
+  await from(`${OWNER}@s.whatsapp.net`, '/admin horarioausente seg-sab 25:00-18:00');
   assert.match(sent.at(-1).text, /Horário inválido/);
   assert.equal((await storage.getBotSettings()).instrucoes, 'Você atende uma pizzaria.');
 });
@@ -102,7 +104,7 @@ test('the allowlist recognizes contacts identified by LID', async () => {
   await from('888@lid', 'oi', { remoteJidAlt: '5531777777777@s.whatsapp.net' });
   await from('999@lid', 'oi');
   assert.equal(prompts.length, 1);
-  assert.equal(sent.at(-1).text, 'Desculpe, você não está autorizado a usar este bot.');
+  assert.deepEqual(sent.map(({ text }) => text), ['*ok*'], 'quem está fora da lista não recebe resposta nenhuma');
 });
 
 test('in groups the bot only answers when mentioned or replied to, quoting the message', async () => {
@@ -136,28 +138,69 @@ test('messages sent in quick succession get a single answer', async () => {
   assert.equal(sent.length, 1);
 });
 
-test('welcome message, per-number instructions and business hours', async () => {
+test('the assistant answers only while the owner is away, and the owner can force it on or off', async () => {
   let now = new Date('2026-10-01T13:00:00Z').getTime(); // qui 10:00 em São Paulo
-  const { from, prompts, sent, storage } = setup({ handler: { now: () => now } });
-  await storage.updateBotSettings({
-    boasVindas: 'Bem-vindo à Pizzaria!',
-    instrucoes: 'Você atende uma pizzaria.',
-    horario: 'seg-sex 09:00-18:00',
-    foraDeHorario: 'Abrimos às 9h.'
-  });
+  const { handler, sock, from, prompts, sent, storage } = setup({ handler: { now: () => now, ownerNumbers: [] } });
   const jid = '5531777777777@s.whatsapp.net';
+  const own = (remoteJid, text, id) => handler(sock, { key: { remoteJid, fromMe: true, id }, message: { conversation: text } });
+  await storage.updateBotSettings({ instrucoes: 'Estou em viagem até sexta.' });
+
+  // O dono acabou de escrever para outra pessoa: está online, o assistente fica quieto.
+  await own('5531666666666@s.whatsapp.net', 'oi, já te ligo', 'a1');
+  await from(jid, 'oi');
+  assert.equal(prompts.length, 0);
+
+  // 10 minutos sem atividade do dono: ele está ausente e o assistente responde.
+  now += 11 * 60_000;
+  await from(jid, 'oi de novo');
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].extraInstruction, 'Estou em viagem até sexta.');
+  assert.equal(prompts[0].assistant.firstContact, true);
+  await from(jid, 'e agora?');
+  assert.equal(prompts[1].assistant.firstContact, false);
+
+  // O dono responde na conversa: o assistente se cala nela por uma hora.
+  await own(jid, 'Oi! Voltei.', 'a2');
+  await from(jid, 'que bom');
+  assert.equal(prompts.length, 2);
+  now += 61 * 60_000;
+  await from(jid, 'ainda aí?');
+  assert.equal(prompts.length, 3);
+
+  // /admin ausente off: nunca responde. on: responde mesmo com o dono ativo.
+  await own('5531000000000@s.whatsapp.net', 'oi', 'a3');
+  await handler(sock, { key: { remoteJid: '5511000000000@s.whatsapp.net', fromMe: true, id: 'a4' }, message: { conversation: '/admin ausente off' } });
+  assert.match(sent.at(-1).text, /desligado/);
+  await from('5531555555555@s.whatsapp.net', 'oi');
+  assert.equal(prompts.length, 3);
+  await handler(sock, { key: { remoteJid: '5511000000000@s.whatsapp.net', fromMe: true, id: 'a5' }, message: { conversation: '/admin ausente on' } });
+  await own('5531000000000@s.whatsapp.net', 'oi', 'a6');
+  await from('5531555555555@s.whatsapp.net', 'oi');
+  assert.equal(prompts.length, 4);
+});
+
+test('answers sent by the bot itself never count as the owner being online', async () => {
+  const now = new Date('2026-10-01T13:00:00Z').getTime();
+  const { handler, sock, from, prompts } = setup({ handler: { now: () => now, ownerNumbers: [] } });
+  const jid = '5531777777777@s.whatsapp.net';
+  sock.sendMessage = async () => ({ key: { id: 'BOT1' } });
 
   await from(jid, 'oi');
-  await from(jid, 'tem calabresa?');
-  assert.deepEqual(sent.map(({ text }) => text), ['Bem-vindo à Pizzaria!', '*ok*', '*ok*']);
-  assert.equal(prompts[0].extraInstruction, 'Você atende uma pizzaria.');
+  assert.equal(prompts.length, 1);
+  // O WhatsApp devolve a própria resposta do bot como mensagem "fromMe".
+  await handler(sock, { key: { remoteJid: jid, fromMe: true, id: 'BOT1' }, message: { conversation: 'resposta do bot' } });
+  await from(jid, 'continua aí?');
+  assert.equal(prompts.length, 2);
+});
 
-  now = new Date('2026-10-01T23:00:00Z').getTime(); // 20:00
-  await from(jid, 'ainda aberto?');
-  await from(jid, 'alô?');
-  await from(`${OWNER}@s.whatsapp.net`, 'dono fala a qualquer hora');
-  assert.deepEqual(sent.slice(3).map(({ text }) => text), ['Abrimos às 9h.', '*ok*']);
-  assert.equal(prompts.length, 3);
+test('the owner is told who wrote when the assistant answers a new conversation', async () => {
+  const { from, sent } = setup({ handler: { notifyOwner: true } });
+  await from('5531777777777@s.whatsapp.net', 'preciso falar com ele');
+  const note = sent.find(({ jid }) => jid === `${OWNER}@s.whatsapp.net`);
+  assert.ok(note, 'o dono recebe um aviso');
+  assert.match(note.text, /preciso falar com ele/);
+  await from('5531777777777@s.whatsapp.net', 'segunda mensagem');
+  assert.equal(sent.filter(({ jid }) => jid === `${OWNER}@s.whatsapp.net`).length, 1, 'só avisa no início da conversa');
 });
 
 test('admin commands work in the bot phone "message yourself" chat, without answering anything else', async () => {

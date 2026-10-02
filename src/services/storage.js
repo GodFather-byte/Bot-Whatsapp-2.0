@@ -9,8 +9,6 @@ export class MemoryStorage {
     this.blocked = new Set();
     this.botSettings = {};
     this.usage = new Map();
-    this.appointments = new Map();
-    this.closedDays = new Map();
   }
 
   async getHistory(remoteJid, limit = 10) {
@@ -111,68 +109,6 @@ export class MemoryStorage {
     return this.getBotSettings();
   }
 
-  // Agendamentos: cada horário (inicio) aceita no máximo um agendamento confirmado.
-  async createAppointment(appointment) {
-    const start = new Date(appointment.inicio).getTime();
-    const taken = [...this.appointments.values()].some(
-      (stored) => stored.status === 'confirmado' && new Date(stored.inicio).getTime() === start
-    );
-    if (taken) return { ok: false, motivo: 'ocupado' };
-    const stored = { ...appointment, status: 'confirmado', criadoEm: new Date() };
-    this.appointments.set(stored.id, stored);
-    return { ok: true, appointment: stored };
-  }
-
-  async getAppointment(id) {
-    return this.appointments.get(id) || null;
-  }
-
-  async updateAppointment(id, changes) {
-    const stored = this.appointments.get(id);
-    if (!stored) return null;
-    const updated = { ...stored, ...changes };
-    this.appointments.set(id, updated);
-    return updated;
-  }
-
-  // Cancela só o que está confirmado; devolve o agendamento cancelado, ou null.
-  async cancelAppointment(id, { por, motivo } = {}) {
-    const stored = this.appointments.get(id);
-    if (!stored || stored.status !== 'confirmado') return null;
-    return this.updateAppointment(id, {
-      status: 'cancelado',
-      canceladoEm: new Date(),
-      ...(por && { canceladoPor: por }),
-      ...(motivo && { canceladoMotivo: motivo })
-    });
-  }
-
-  // Agendamentos confirmados com início em [from, to), do mais cedo para o mais tarde.
-  async listAppointments({ from, to } = {}) {
-    return [...this.appointments.values()]
-      .filter((stored) => stored.status === 'confirmado'
-        && (!from || new Date(stored.inicio) >= from)
-        && (!to || new Date(stored.inicio) < to))
-      .sort((left, right) => new Date(left.inicio) - new Date(right.inicio));
-  }
-
-  async listClientAppointments(clienteJid, { from = new Date() } = {}) {
-    return (await this.listAppointments({ from })).filter((stored) => stored.clienteJid === clienteJid);
-  }
-
-  // Dias em que o estúdio não atende (feriado, folga). A chave do dia é "AAAA-MM-DD".
-  async closeDay(day, motivo = '') {
-    this.closedDays.set(day, { dia: day, motivo });
-  }
-
-  async openDay(day) {
-    return this.closedDays.delete(day);
-  }
-
-  async listClosedDays(fromDay = '') {
-    return [...this.closedDays.values()].filter(({ dia }) => dia >= fromDay).sort((a, b) => a.dia.localeCompare(b.dia));
-  }
-
   // Uso da API do Gemini por dia de cota, somado para todos os números do bot.
   async incrementUsage(day, changes) {
     const entry = this.usage.get(day) || {};
@@ -206,7 +142,6 @@ export class MemoryStorage {
   async close() {}
 }
 
-const withId = ({ _id, ...stored }) => ({ ...stored, id: stored.id || _id });
 
 export class MongoStorage extends MemoryStorage {
   // Com botId, cada número do bot enxerga apenas os próprios históricos, usuários e lembretes.
@@ -224,17 +159,6 @@ export class MongoStorage extends MemoryStorage {
     this.configBots = database.collection('config_bots');
     this.estatisticas = database.collection('estatisticas');
     this.usoApi = database.collection('uso_api');
-    this.agendamentos = database.collection('agendamentos');
-    this.diasFechados = database.collection('dias_fechados');
-  }
-
-  // Garante, no próprio banco, que um horário nunca receba dois agendamentos confirmados.
-  async ensureIndexes() {
-    await this.agendamentos.createIndex(
-      { botId: 1, inicio: 1 },
-      { unique: true, partialFilterExpression: { status: 'confirmado' }, name: 'horario_unico_confirmado' }
-    );
-    await this.agendamentos.createIndex({ clienteJid: 1, inicio: 1 }, { name: 'cliente_inicio' });
   }
 
   async getHistory(remoteJid, limit = 10) {
@@ -409,106 +333,6 @@ export class MongoStorage extends MemoryStorage {
     return this.getBotSettings();
   }
 
-  async createAppointment(appointment) {
-    const result = await super.createAppointment(appointment);
-    if (!result.ok) return result;
-    try {
-      await this.agendamentos.insertOne({ ...result.appointment, ...this.scope, _id: result.appointment.id });
-    } catch (error) {
-      // Índice único: outro agendamento confirmado já ocupa este horário.
-      if (error?.code === 11000) {
-        this.appointments.delete(result.appointment.id);
-        return { ok: false, motivo: 'ocupado' };
-      }
-    }
-    return result;
-  }
-
-  async getAppointment(id) {
-    try {
-      const stored = await this.agendamentos.findOne({ ...this.scope, _id: id });
-      return stored ? withId(stored) : super.getAppointment(id);
-    } catch {
-      return super.getAppointment(id);
-    }
-  }
-
-  async updateAppointment(id, changes) {
-    await super.updateAppointment(id, changes);
-    try {
-      await this.agendamentos.updateOne({ ...this.scope, _id: id }, { $set: changes });
-    } catch {
-      return super.getAppointment(id);
-    }
-    return this.getAppointment(id);
-  }
-
-  async cancelAppointment(id, { por, motivo } = {}) {
-    const cancelledInMemory = await super.cancelAppointment(id, { por, motivo });
-    try {
-      const stored = await this.agendamentos.findOneAndUpdate(
-        { ...this.scope, _id: id, status: 'confirmado' },
-        { $set: {
-          status: 'cancelado',
-          canceladoEm: new Date(),
-          ...(por && { canceladoPor: por }),
-          ...(motivo && { canceladoMotivo: motivo })
-        } },
-        { returnDocument: 'after' }
-      );
-      return stored ? withId(stored) : cancelledInMemory;
-    } catch {
-      return cancelledInMemory;
-    }
-  }
-
-  async listAppointments({ from, to } = {}) {
-    try {
-      const inicio = { ...(from && { $gte: from }), ...(to && { $lt: to }) };
-      const stored = await this.agendamentos
-        .find({ ...this.scope, status: 'confirmado', ...(Object.keys(inicio).length && { inicio }) })
-        .sort({ inicio: 1 }).toArray();
-      return stored.map(withId);
-    } catch {
-      return super.listAppointments({ from, to });
-    }
-  }
-
-  async listClientAppointments(clienteJid, { from = new Date() } = {}) {
-    try {
-      const stored = await this.agendamentos
-        .find({ ...this.scope, status: 'confirmado', clienteJid, inicio: { $gte: from } })
-        .sort({ inicio: 1 }).toArray();
-      return stored.map(withId);
-    } catch {
-      return super.listClientAppointments(clienteJid, { from });
-    }
-  }
-
-  async closeDay(day, motivo = '') {
-    await super.closeDay(day, motivo);
-    await this.diasFechados.updateOne(
-      { _id: `${this.botId || 'principal'}:${day}` },
-      { $set: { ...this.scope, dia: day, motivo } },
-      { upsert: true }
-    );
-  }
-
-  async openDay(day) {
-    const removed = await super.openDay(day);
-    const result = await this.diasFechados.deleteOne({ _id: `${this.botId || 'principal'}:${day}` });
-    return result.deletedCount > 0 || removed;
-  }
-
-  async listClosedDays(fromDay = '') {
-    try {
-      const stored = await this.diasFechados.find({ ...this.scope, dia: { $gte: fromDay } }).sort({ dia: 1 }).toArray();
-      return stored.map(({ dia, motivo }) => ({ dia, motivo }));
-    } catch {
-      return super.listClosedDays(fromDay);
-    }
-  }
-
   async incrementUsage(day, changes) {
     await super.incrementUsage(day, changes);
     await this.usoApi.updateOne({ _id: day }, { $inc: changes }, { upsert: true });
@@ -562,8 +386,6 @@ export async function createStorage(mongoUri, logger = console, dbName) {
   try {
     await client.connect();
     const storage = new MongoStorage(client, dbName);
-    await storage.ensureIndexes().catch((error) =>
-      logger.warn({ err: error }, 'Não foi possível criar os índices da agenda no MongoDB'));
     return storage;
   } catch (error) {
     await client.close().catch(() => {});

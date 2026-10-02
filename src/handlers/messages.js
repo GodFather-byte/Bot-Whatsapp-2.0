@@ -2,19 +2,15 @@ import { extractMedia, UserFacingError } from './media.js';
 import { handleCommand } from './commands.js';
 import { handleAdminCommand } from './admin.js';
 import { fetchLinkContent, findUrl } from '../services/links.js';
+import { createPresenceTracker } from '../services/presence.js';
 import { splitMessage, toWhatsAppFormat } from '../utils/format.js';
-import { isWithinBusinessHours, parseBusinessHours } from '../utils/time.js';
-import { describeHours } from '../utils/slots.js';
-
-const unauthorizedMessage = 'Desculpe, você não está autorizado a usar este bot.';
-const rateLimitedMessage = 'Você está enviando muitas mensagens. Aguarde um pouco.';
-const failureMessage = 'Desculpe, tive um problema. Tente novamente em instantes.';
-const ownerOnlyMessage = 'Apenas o dono do bot pode usar os comandos /admin.';
-const defaultOffHoursMessage = 'Olá! No momento estamos fora do horário de atendimento. Responderemos assim que possível.';
+const rateLimitedMessage = 'Calma, meu amigo. A família não é tão rápida assim. Aguarde um pouco. 🥃';
+const failureMessage = 'Houve um contratempo nos negócios da família. Tente novamente em instantes. 🕴️';
 const oneDayAgo = () => Date.now() - 86_400_000;
 const MAX_MESSAGE_AGE_MS = 2 * 60_000;
 const MAX_SEEN_IDS = 1000;
-const OFF_HOURS_REPLY_INTERVAL_MS = 6 * 60 * 60_000;
+const NEW_CONVERSATION_AFTER_MS = 6 * 60 * 60_000;
+const MAX_BOT_SENT_IDS = 500;
 
 const jidUser = (jid) => jid?.split(/[:@]/)[0];
 
@@ -82,16 +78,6 @@ function isAddressedToBot(sock, contextInfo) {
     || self.has(jidUser(contextInfo.participant));
 }
 
-// Horário da agenda em português, para a IA responder "que horas vocês abrem?" sem inventar.
-function describeAgendaHours(spec) {
-  if (!spec) return undefined;
-  try {
-    return describeHours(parseBusinessHours(spec));
-  } catch {
-    return undefined;
-  }
-}
-
 async function buildLinkParts(text, url, fetchLink, logger) {
   const question = text.replace(url, '').trim() || 'Resuma o conteúdo deste link.';
   try {
@@ -129,14 +115,55 @@ export function createMessageHandler({
   broadcastDelayMs,
   usage,
   dailyLimit,
-  agenda
+  presence = createPresenceTracker({ timeZone, now }),
+  notifyOwner = true
 }) {
   // Pode ser um Set compartilhado que cresce quando cada número do bot conecta (número e LID).
   const ignored = ignoredNumbers instanceof Set ? ignoredNumbers : new Set(ignoredNumbers);
   const owners = new Set(ownerNumbers);
   const seenIds = new Set();
-  const offHoursReplies = new Map();
+  const botSentIds = new Set();
+  const patchedSockets = new WeakSet();
   const pending = new Map();
+
+  // Mensagens que o próprio bot envia podem voltar como "fromMe"; guardar os ids evita confundi-las com o dono digitando.
+  function trackSentIds(sock) {
+    if (patchedSockets.has(sock) || typeof sock.sendMessage !== 'function') return;
+    patchedSockets.add(sock);
+    const original = sock.sendMessage.bind(sock);
+    sock.sendMessage = async (...args) => {
+      const result = await original(...args);
+      const id = result?.key?.id;
+      if (id) {
+        botSentIds.add(id);
+        if (botSentIds.size > MAX_BOT_SENT_IDS) botSentIds.delete(botSentIds.values().next().value);
+      }
+      return result;
+    };
+  }
+
+  // Quem recebe os avisos do assistente: os números de dono configurados ou, sem eles, a própria conversa "Você".
+  function ownerJids(sock) {
+    if (owners.size) return [...owners].map((number) => `${number}@s.whatsapp.net`);
+    const self = jidUser(sock.user?.id);
+    return self ? [`${self}@s.whatsapp.net`] : [];
+  }
+
+  async function notifyOwners(sock, remoteJid, msg, senderNumbers, question, answer) {
+    const who = [msg.pushName, senderNumbers[0] && `+${senderNumbers[0]}`].filter(Boolean).join(' · ') || remoteJid;
+    const note = [
+      `📩 *${who}* escreveu e o assistente respondeu:`,
+      `> ${question.slice(0, 300)}`,
+      `↳ ${answer.slice(0, 300)}`
+    ].join('\n');
+    for (const jid of ownerJids(sock)) {
+      try {
+        await sock.sendMessage(jid, { text: note });
+      } catch (error) {
+        logger.warn({ err: error, jid }, 'Falha ao avisar o dono');
+      }
+    }
+  }
 
   // `native`: o texto já está no formato do WhatsApp (*negrito*), então não passa pela conversão de Markdown,
   // que trataria *negrito* como itálico. Só a saída da IA precisa ser convertida.
@@ -162,10 +189,8 @@ export function createMessageHandler({
     const user = await storage.getUser(remoteJid);
     const history = await storage.getHistory(remoteJid, 10);
 
-    if (!isGroup && !isOwner && settings.boasVindas && !user.boasVindasEnviadas && !history.length) {
-      await send(sock, remoteJid, settings.boasVindas);
-      await storage.updateUser(remoteJid, { boasVindasEnviadas: true });
-    }
+    const lastAt = history.at(-1)?.timestamp ? new Date(history.at(-1).timestamp).getTime() : 0;
+    const firstContact = !isOwner && (!history.length || now() - lastAt > NEW_CONVERSATION_AFTER_MS);
 
     const speaker = isGroup && msg.pushName ? `${msg.pushName}: ` : '';
     const userText = `${speaker}${media?.text || text}`;
@@ -179,16 +204,13 @@ export function createMessageHandler({
       parts,
       user,
       extraInstruction: settings.instrucoes,
-      openingHours: describeAgendaHours(settings.agendaHorario),
-      // Agendar é coisa de conversa privada: em grupo, a "conversa" seria o grupo inteiro.
-      toolContext: agenda && !isGroup
-        ? { agenda, client: { jid: remoteJid, name: msg.pushName, number: senderNumbers[0] } }
-        : undefined
+      assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner }
     });
     await storage.addMessage({ remoteJid, role: 'user', conteudo: userText, tipo: media?.type || 'texto' });
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
 
     await send(sock, remoteJid, answer, isGroup ? msg : undefined);
+    if (firstContact && notifyOwner && !isGroup) await notifyOwners(sock, remoteJid, msg, senderNumbers, userText, answer);
     stats.recentMessages.unshift({
       de: remoteJid,
       texto: userText.slice(0, 500),
@@ -228,10 +250,11 @@ export function createMessageHandler({
   }
 
   // Ignora mensagens antigas (acumuladas com o bot desligado) e repetidas (o WhatsApp pode reentregar).
-  function isFreshAndNew(msg, remoteJid) {
+  function isFreshAndNew(msg, remoteJid, { markSeen = true } = {}) {
     const sentAt = messageTime(msg);
     if (sentAt !== null && now() - sentAt > MAX_MESSAGE_AGE_MS) return false;
     const messageId = msg.key?.id && `${remoteJid}:${msg.key.id}`;
+    if (messageId && !markSeen) return !seenIds.has(messageId);
     if (messageId) {
       if (seenIds.has(messageId)) return false;
       seenIds.add(messageId);
@@ -240,16 +263,19 @@ export function createMessageHandler({
     return true;
   }
 
-  // Comandos /admin escritos no próprio celular do bot, na conversa "Você" (consigo mesmo).
-  // Quem tem acesso ao celular do bot é o dono, então isso funciona mesmo sem NUMERO_DONO.
+  // Comandos escritos no próprio celular, na conversa "Você" (consigo mesmo). Quem tem acesso ao celular é o dono,
+  // então isso funciona mesmo sem NUMERO_DONO. Texto comum nessa conversa é anotação do dono e não é respondido.
   async function handleSelfChat(sock, msg, remoteJid) {
     const self = new Set([jidUser(sock.user?.id), jidUser(sock.user?.lid)].filter(Boolean));
     if (!self.has(jidUser(remoteJid)) || remoteJid.endsWith('@g.us')) return;
-    const adminMatch = getText(unwrapMessage(msg.message)).trim().match(/^\/admin\b\s*([\s\S]*)$/i);
-    if (!adminMatch || !isFreshAndNew(msg, remoteJid)) return;
+    const text = getText(unwrapMessage(msg.message)).trim();
+    if (!text.startsWith('/') || !isFreshAndNew(msg, remoteJid)) return;
     try {
-      const reply = await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, agenda });
-      await send(sock, remoteJid, reply, undefined, { native: true });
+      const adminMatch = text.match(/^\/admin\b\s*([\s\S]*)$/i);
+      const reply = adminMatch
+        ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence })
+        : await handleCommand(text, remoteJid, { storage, gemini, stats, timeZone });
+      if (reply !== null) await send(sock, remoteJid, reply, undefined, { native: true });
     } catch (error) {
       await reportFailure(sock, remoteJid, error);
     }
@@ -259,9 +285,14 @@ export function createMessageHandler({
     if (!msg?.message) return;
     const remoteJid = msg.key?.remoteJid;
     if (!remoteJid || remoteJid === 'status@broadcast') return;
-    // Mensagens enviadas pelo próprio número do bot são ignoradas (inclusive as respostas do bot),
-    // exceto comandos /admin na conversa consigo mesmo.
+    trackSentIds(sock);
+    // Mensagens do próprio número são do dono digitando no celular (ou respostas do bot, que são ignoradas).
+    // Elas mostram que o dono está online: o assistente se cala naquela conversa e não responde enquanto ele estiver ativo.
     if (msg.key?.fromMe) {
+      if (msg.key.id && botSentIds.has(msg.key.id)) return;
+      const self = new Set([jidUser(sock.user?.id), jidUser(sock.user?.lid)].filter(Boolean));
+      const isSelfChat = self.has(jidUser(remoteJid));
+      if (isFreshAndNew(msg, remoteJid, { markSeen: false })) presence.recordOwnerActivity(isSelfChat ? null : remoteJid);
       await handleSelfChat(sock, msg, remoteJid);
       return;
     }
@@ -285,10 +316,12 @@ export function createMessageHandler({
       const isOwner = senderNumbers.some((number) => owners.has(number));
       if (!isOwner && await storage.isBlocked(senderNumbers)) return;
 
-      if (!isOwner && !allowlist.isAllowed(senderJid, senderAlt, ...senderNumbers)) {
-        if (!isGroup) await sock.sendMessage(remoteJid, { text: unauthorizedMessage });
-        return;
-      }
+      // Número fora da lista permitida: o assistente finge que não viu, sem avisar a pessoa.
+      if (!isOwner && !allowlist.isAllowed(senderJid, senderAlt, ...senderNumbers)) return;
+
+      const settings = await storage.getBotSettings();
+      // O assistente só fala por você quando você está ausente (modo "auto") ou quando você mandou ligar (modo "on").
+      if (!isOwner && !presence.isAway({ mode: settings.ausencia, schedule: settings.ausenciaHorario, chatJid: remoteJid })) return;
 
       if (!isOwner) {
         const rate = rateLimiter.consume(senderJid);
@@ -312,29 +345,17 @@ export function createMessageHandler({
       stats.totalMessages += 1;
       stats.lastMessageAt = new Date();
 
+      // Comandos são do dono. Para os contatos, "/algo" é texto comum e o assistente conversa normalmente.
       const commandText = text || media?.text || '';
-      if (commandText.startsWith('/')) {
+      if (isOwner && commandText.startsWith('/')) {
         const adminMatch = commandText.match(/^\/admin\b\s*([\s\S]*)$/i);
         const reply = adminMatch
-          ? (isOwner
-            ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, agenda })
-            : ownerOnlyMessage)
-          : await handleCommand(commandText, remoteJid, { storage, gemini, stats, timeZone, agenda: isGroup ? undefined : agenda });
+          ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence })
+          : await handleCommand(commandText, remoteJid, { storage, gemini, stats, timeZone });
         if (reply !== null) {
           await send(sock, remoteJid, reply, undefined, { native: true });
           return;
         }
-      }
-
-      const settings = await storage.getBotSettings();
-      if (!isOwner && settings.horario && !isWithinBusinessHours(parseBusinessHours(settings.horario), new Date(now()), timeZone)) {
-        const lastReply = offHoursReplies.get(senderJid) || 0;
-        if (now() - lastReply >= OFF_HOURS_REPLY_INTERVAL_MS) {
-          offHoursReplies.set(senderJid, now());
-          if (offHoursReplies.size > MAX_SEEN_IDS) offHoursReplies.delete(offHoursReplies.keys().next().value);
-          await send(sock, remoteJid, settings.foraDeHorario || defaultOffHoursMessage);
-        }
-        return;
       }
 
       const request = { sock, remoteJid, isGroup, isOwner, msg, text, media, settings, senderNumbers };

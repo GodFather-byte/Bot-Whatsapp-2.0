@@ -55,17 +55,6 @@ function positiveInteger(value, fallback, variable) {
   return parsed;
 }
 
-// Hora do dia (0-23) em que a dona recebe o resumo da agenda. Vazio usa 8h; "desligado" não envia.
-function parseSummaryHour(value) {
-  if (value === undefined || value.trim() === '') return 8;
-  if (['desligado', 'desligar', 'off', 'false', 'nao', 'não'].includes(value.trim().toLowerCase())) return null;
-  const hour = Number(value);
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-    throw new Error('AGENDA_RESUMO_HORA deve ser uma hora entre 0 e 23, ou "desligado".');
-  }
-  return hour;
-}
-
 export function loadConfig(env = process.env) {
   const port = positiveInteger(env.PORT, 3000, 'PORT');
   const reminderCheckInterval = positiveInteger(
@@ -91,7 +80,7 @@ export function loadConfig(env = process.env) {
     ownerNumbers: parseAllowedNumbers(env.NUMERO_DONO, 'NUMERO_DONO'),
     timeZone: parseTimeZone(env.FUSO_HORARIO),
     messageDebounceMs: nonNegativeInteger(env.JUNTAR_MENSAGENS_MS, 2500, 'JUNTAR_MENSAGENS_MS'),
-    groupsEnabled: parseBoolean(env.GRUPOS_ATIVADOS, true),
+    groupsEnabled: parseBoolean(env.GRUPOS_ATIVADOS, false),
     allowedNumbers: parseAllowedNumbers(env.WHATSAPP_ALLOWED_NUMBERS),
     allowedNumbersConfigured: env.WHATSAPP_ALLOWED_NUMBERS !== undefined,
     geminiApiKey: env.GEMINI_API_KEY || '',
@@ -104,15 +93,12 @@ export function loadConfig(env = process.env) {
     dashboardEnabled: parseBoolean(env.DASHBOARD_ENABLED, false),
     dashboardAuthToken: env.DASHBOARD_AUTH_TOKEN || '',
     reminderCheckInterval,
-    agenda: {
-      stepMin: positiveInteger(env.AGENDA_INTERVALO_MIN, 30, 'AGENDA_INTERVALO_MIN'),
-      minNoticeMin: nonNegativeInteger(env.AGENDA_ANTECEDENCIA_MIN, 60, 'AGENDA_ANTECEDENCIA_MIN'),
-      daysAhead: positiveInteger(env.AGENDA_DIAS_A_FRENTE, 30, 'AGENDA_DIAS_A_FRENTE'),
-      maxPerClient: positiveInteger(env.AGENDA_MAX_POR_CLIENTE, 2, 'AGENDA_MAX_POR_CLIENTE'),
-      summaryHour: parseSummaryHour(env.AGENDA_RESUMO_HORA)
+    ownerName: (env.NOME_DONO || '').trim(),
+    presence: {
+      idleMinutes: positiveInteger(env.AUSENTE_APOS_MIN, 10, 'AUSENTE_APOS_MIN'),
+      takeoverMinutes: positiveInteger(env.SILENCIAR_APOS_RESPOSTA_MIN, 60, 'SILENCIAR_APOS_RESPOSTA_MIN')
     },
-    googleCalendarId: env.GOOGLE_CALENDAR_ID || '',
-    googleServiceAccount: env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
+    notifyOwner: parseBoolean(env.AVISAR_DONO, true),
     toolApiKeys: {
       weather: env.TOOL_WEATHER_API_KEY || '',
       news: env.TOOL_NEWS_API_KEY || '',
