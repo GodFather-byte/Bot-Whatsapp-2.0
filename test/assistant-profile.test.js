@@ -12,6 +12,8 @@ test('the assistant is called Bot PH Zeus and speaks for the owner without inven
   assert.match(prompt, /primeira mensagem da conversa com Ana/);
   assert.match(prompt, /Nunca invente nada sobre Paulo/);
   assert.match(prompt, /código de verificação/);
+  assert.match(prompt, /consigliere/);
+  assert.match(prompt, /nunca ameace/);
   assert.doesNotMatch(buildAssistantPrompt({ ownerName: 'Paulo' }), /primeira mensagem/);
   assert.match(buildAssistantPrompt({ isGroup: true }), /grupo/);
   assert.match(buildAssistantPrompt({ ownerName: 'Paulo', withOwner: true }), /próprio dono/);
@@ -37,6 +39,7 @@ test('the Gemini system prompt carries the assistant rules, the date and the own
   assert.match(system, /assistente pessoal de Paulo/);
   assert.match(system, /Data de hoje: sexta, 02\/10\/2026/);
   assert.match(system, /Estou em reunião\./);
+  assert.match(system, /Tom de máfia/);
 });
 
 test('presence: the owner counts as online while typing, and the assistant steps back from chats they answer', () => {

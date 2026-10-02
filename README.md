@@ -15,6 +15,10 @@ O **Bot PH Zeus** é o consigliere de confiança do chefe (você). Quando o **ch
 | **Os contatos** | Quem bate à porta. São atendidos com educação, e quem for suspeito é ignorado em silêncio. |
 | **A lista negra** | Quem foi `/admin bloquear`. Nem a porta abre. 🚪 |
 
+## 🎭 O sotaque da família
+
+As respostas do consigliere têm tom de máfia de filme, **só de brincadeira**: ele chama você de "chefe" e os contatos de "meu amigo". Por regra, ele **nunca ameaça, intimida nem fala de violência ou crime**, e se a conversa for séria ele larga a encenação. Quer sem sotaque? Use `/persona formal` na conversa "Você" ou edite `SYSTEM_INSTRUCTIONS.padrao` em `src/services/gemini.js` e o prompt em `src/assistant/profile.js`.
+
 ## 🥃 Quando o chefe está "fora do escritório"
 
 O WhatsApp não avisa a um bot quando você está online, então o consigliere vigia a sua atividade pelas mensagens que **você envia pelo celular**:

@@ -105,5 +105,5 @@ test('message handler skips stale and duplicated messages and warns about the ra
   for (const id of ['b', 'c', 'd', 'e']) await handler(sock, message(id, 1));
 
   assert.equal(generationCount, 2);
-  assert.deepEqual(replies, ['ok', 'ok', 'Você está enviando muitas mensagens. Aguarde um pouco.']);
+  assert.deepEqual(replies, ['ok', 'ok', 'Calma, meu amigo. A família não é tão rápida assim. Aguarde um pouco. 🥃']);
 });
