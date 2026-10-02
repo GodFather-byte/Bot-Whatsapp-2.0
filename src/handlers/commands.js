@@ -1,15 +1,8 @@
 import { SYSTEM_INSTRUCTIONS } from '../services/gemini.js';
 import { formatDateTime, parseReminder, WEEKDAY_LABELS } from '../utils/time.js';
-import { formatBooking, formatContact, formatPriceList } from '../business/botPhZeus.js';
 import { toWhatsAppFormat } from '../utils/format.js';
-import { dateKey, formatDay, parseDateInput, parseDateKey } from '../utils/slots.js';
 
 const commandHelp = [
-  '/precos — tabela de preços dos protocolos Bronze, Prata e Ouro',
-  '/endereco — endereço, WhatsApp e Instagram do estúdio',
-  '/horarios [data] — horários livres para agendar (ex.: /horarios amanhã, /horarios 25/12)',
-  '/agendamentos — seus horários marcados',
-  '/cancelar_agendamento <código> — cancela um horário seu',
   '/reset — limpa o histórico da conversa',
   '/ajuda — mostra esta lista de comandos',
   '/status — mostra o status do bot e sua persona',
@@ -37,40 +30,12 @@ function describeRecurrence(recurrence) {
   return recurrence.tipo === 'diaria' ? ' (todo dia)' : ` (toda ${WEEKDAY_LABELS[recurrence.diaSemana]})`;
 }
 
-const agendaGroupMessage = 'Os agendamentos funcionam só na conversa privada comigo. Me chame no privado! ☀️';
-const agendaOffMessage = `A agenda online ainda não está liberada. Para agendar, chame a dona do estúdio no WhatsApp: ${formatBooking()}`;
-
-function formatFreeSlots(days) {
-  return days.map(({ data, horarios }) => {
-    const parts = parseDateKey(data);
-    return `*${formatDay(parts)}*: ${horarios.join(', ')}`;
-  }).join('\n');
-}
-
-async function freeSlots(agenda, argument, now, timeZone) {
-  let result;
-  if (argument) {
-    const parts = parseDateInput(argument, now(), timeZone);
-    if (!parts) return 'Não entendi a data. Exemplos: /horarios amanhã, /horarios 25/12';
-    result = await agenda.availability(dateKey(parts));
-    if (result.ok && result.fechado) return `Não atendemos em ${formatDay(parts)}${result.motivo ? ` (${result.motivo})` : ''}. Quer ver outro dia?`;
-    if (result.ok) result = { ok: true, dias: result.horarios.length ? [result] : [], aviso: `Sem horários livres em ${formatDay(parts)}.` };
-  } else {
-    result = await agenda.nextAvailability({ maxDays: 3 });
-  }
-  if (result.indisponivel) return agendaOffMessage;
-  if (!result.ok) return result.erro;
-  if (!result.dias.length) return `${result.aviso || 'Sem horários livres.'} Tente outro dia!`;
-  return `🗓️ *Horários livres*\n${formatFreeSlots(result.dias)}\n\nPara agendar, é só me dizer o dia, o horário e o protocolo. ☀️`;
-}
-
 export async function handleCommand(text, remoteJid, {
   storage,
   gemini,
   stats,
   timeZone = 'America/Sao_Paulo',
-  now = () => new Date(),
-  agenda
+  now = () => new Date()
 }) {
   const match = text.match(/^\/([a-záéíóúç_]+)(?:\s+([\s\S]*))?$/i);
   if (!match) return null;
@@ -81,38 +46,6 @@ export async function handleCommand(text, remoteJid, {
     case 'ajuda':
     case 'help':
       return `Comandos disponíveis:\n${commandHelp}`;
-    case 'precos':
-    case 'preços':
-    case 'valores':
-    case 'protocolos':
-      return formatPriceList();
-    case 'endereco':
-    case 'endereço':
-    case 'contato':
-      return formatContact();
-    case 'horarios':
-    case 'horários':
-      return agenda ? freeSlots(agenda, argument, now, timeZone) : agendaGroupMessage;
-    case 'agendamentos':
-    case 'agenda': {
-      if (!agenda) return agendaGroupMessage;
-      const bookings = await agenda.listClient(remoteJid);
-      if (!bookings.length) return 'Você não tem agendamentos. Quer marcar um horário? É só me dizer o dia e o horário que prefere! ☀️';
-      return [
-        '📅 *Seus agendamentos*',
-        ...bookings.map((item) => `- ${item.quando} · ${item.protocolo.replace(/^Protocolo\s+/i, '')} ${item.duracaoMinutos} min · ${item.valor} · código ${item.codigo}`),
-        '',
-        `Para cancelar: /cancelar_agendamento ${bookings[0].codigo}`
-      ].join('\n');
-    }
-    case 'cancelar_agendamento': {
-      if (!agenda) return agendaGroupMessage;
-      if (!argument) return 'Informe o código do agendamento: /cancelar_agendamento <código>. Veja os seus em /agendamentos.';
-      const result = await agenda.cancel({ id: argument, requesterJid: remoteJid, by: 'cliente' });
-      return result.ok
-        ? `Agendamento ${result.agendamento.codigo} (${result.agendamento.quando}) cancelado. Se quiser, posso marcar outro horário! ☀️`
-        : result.erro;
-    }
     case 'reset':
       await storage.resetHistory(remoteJid);
       return 'Histórico da conversa apagado.';

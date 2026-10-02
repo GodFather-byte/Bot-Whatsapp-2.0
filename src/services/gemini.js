@@ -1,18 +1,16 @@
 import { GoogleGenAI } from '@google/genai';
 import { toolDeclarations, executeTool } from '../handlers/tools.js';
-import { business, buildBusinessPrompt } from '../business/botPhZeus.js';
-import { dateKey, weekdayName } from '../utils/slots.js';
-import { zonedParts } from '../utils/time.js';
+import { buildAssistantPrompt } from '../assistant/profile.js';
+import { WEEKDAY_LABELS, zonedParts } from '../utils/time.js';
 
-// A persona só ajusta o tom: o conhecimento do estúdio (buildBusinessPrompt) vai em toda resposta.
+// A persona só ajusta o tom: as regras do assistente (buildAssistantPrompt) vão em toda resposta.
 export const SYSTEM_INSTRUCTIONS = {
   padrao: 'Tom acolhedor, simpático e direto.',
   formal: 'Seja formal e profissional: linguagem cuidadosa e sem emojis.',
   engraçado: 'Seja divertido e bem-humorado: tom casual e emojis, sem perder a clareza das informações.',
-  técnico: 'Seja técnico e detalhado ao explicar, sem inventar nada que não esteja nas informações do estúdio.'
+  técnico: 'Seja técnico e detalhado ao explicar, sem inventar nada.'
 };
 
-// Um agendamento com uma tentativa que falha (consultar, agendar, consultar de novo, agendar) passa de 4 rodadas.
 const MAX_TOOL_ROUNDS = 6;
 
 function withTimeout(promise, timeoutMs) {
@@ -39,17 +37,16 @@ function retryDelay(error, attempt) {
 function todayLine(now, timeZone) {
   const local = zonedParts(now, timeZone);
   const date = `${String(local.day).padStart(2, '0')}/${String(local.month).padStart(2, '0')}/${local.year}`;
-  return `Data de hoje: ${weekdayName(local.weekday)}, ${date} (${dateKey(local)}), fuso ${timeZone}. Informe datas às ferramentas no formato AAAA-MM-DD.`;
+  return `Data de hoje: ${WEEKDAY_LABELS[local.weekday]}, ${date}, fuso ${timeZone}.`;
 }
 
-function instructionFor(user, extraInstruction, { openingHours, now, timeZone }) {
+function instructionFor(user, extraInstruction, { assistant, now, timeZone }) {
   const persona = user?.persona || 'padrao';
   const base = SYSTEM_INSTRUCTIONS[persona] || SYSTEM_INSTRUCTIONS.padrao;
   const language = user?.idioma ? `Responda sempre no idioma ${user.idioma}.` : '';
-  const extra = extraInstruction ? `\nInstruções do responsável por este número: ${extraInstruction}` : '';
+  const extra = extraInstruction ? `\nInformações e instruções do dono deste número (siga e pode usar): ${extraInstruction}` : '';
   const format = '\nVocê está no WhatsApp: use *negrito*, _itálico_ e listas com "-"; evite tabelas e títulos com #.';
-  const prompt = buildBusinessPrompt({ ...business, openingHours: openingHours || business.openingHours });
-  return `${prompt}\n\n${todayLine(now, timeZone)}\n\nTom das respostas: ${base} ${language}${format}${extra}`;
+  return `${buildAssistantPrompt(assistant)}\n\n${todayLine(now, timeZone)}\n\nTom das respostas: ${base} ${language}${format}${extra}`;
 }
 
 export function createGeminiService({
@@ -61,7 +58,8 @@ export function createGeminiService({
   ai,
   onUsage = () => {},
   timeZone = 'America/Sao_Paulo',
-  now = () => new Date()
+  now = () => new Date(),
+  ownerName = ''
 } = {}) {
   const client = ai || (apiKey ? new GoogleGenAI({ apiKey }) : null);
 
@@ -80,7 +78,7 @@ export function createGeminiService({
     }
   }
 
-  async function generate({ history = [], parts, text, user = {}, extraInstruction, openingHours, toolContext }) {
+  async function generate({ history = [], parts, text, user = {}, extraInstruction, assistant }) {
     const contents = history.map(({ role, conteudo }) => ({
       role: role === 'assistant' ? 'model' : 'user',
       parts: [{ text: conteudo }]
@@ -92,7 +90,7 @@ export function createGeminiService({
       contents,
       config: {
         maxOutputTokens: maxTokens || 2048,
-        systemInstruction: instructionFor(user, extraInstruction, { openingHours, now: now(), timeZone }),
+        systemInstruction: instructionFor(user, extraInstruction, { assistant: { ownerName, ...assistant }, now: now(), timeZone }),
         tools: [{ functionDeclarations: toolDeclarations }]
       }
     };
@@ -105,7 +103,7 @@ export function createGeminiService({
       const modelParts = response.candidates?.[0]?.content?.parts || [];
       const functionResponses = await Promise.all(functionCalls.map(async ({ name, args }) => {
         try {
-          return { functionResponse: { name, response: { result: await executeTool(name, args, { apiKeys, ...toolContext }) } } };
+          return { functionResponse: { name, response: { result: await executeTool(name, args, { apiKeys }) } } };
         } catch (error) {
           return { functionResponse: { name, response: { error: error.message } } };
         }
@@ -123,7 +121,7 @@ export function createGeminiService({
     throw new Error('O Gemini excedeu o limite de chamadas de ferramentas.');
   }
 
-  async function stream({ history = [], parts, text, user = {}, extraInstruction, openingHours, toolContext }) {
+  async function stream({ history = [], parts, text, user = {}, extraInstruction, assistant }) {
     if (!client) throw new Error('GEMINI_API_KEY não foi configurada.');
     const contents = history.map(({ role, conteudo }) => ({
       role: role === 'assistant' ? 'model' : 'user',
@@ -135,7 +133,7 @@ export function createGeminiService({
       contents,
       config: {
         maxOutputTokens: maxTokens || 2048,
-        systemInstruction: instructionFor(user, extraInstruction, { openingHours, now: now(), timeZone }),
+        systemInstruction: instructionFor(user, extraInstruction, { assistant: { ownerName, ...assistant }, now: now(), timeZone }),
         tools: [{ functionDeclarations: toolDeclarations }]
       }
     };
@@ -168,7 +166,7 @@ export function createGeminiService({
       if (!result.functionCalls.length) return result.text || 'Não consegui gerar uma resposta.';
       const functionResponses = await Promise.all(result.functionCalls.map(async ({ name, args }) => {
         try {
-          return { functionResponse: { name, response: { result: await executeTool(name, args, { apiKeys, ...toolContext }) } } };
+          return { functionResponse: { name, response: { result: await executeTool(name, args, { apiKeys }) } } };
         } catch (error) {
           return { functionResponse: { name, response: { error: error.message } } };
         }

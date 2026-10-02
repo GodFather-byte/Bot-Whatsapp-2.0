@@ -48,7 +48,7 @@ test('message handler saves user and assistant turns, and enforces allowlisting'
 
   assert.equal(generationCount, 1);
   assert.deepEqual((await storage.getHistory('5511999999999@s.whatsapp.net')).map(({ role }) => role), ['user', 'assistant']);
-  assert.match(replies[1].text, /não está autorizado/);
+  assert.equal(replies.length, 1, 'números fora da lista permitida não recebem resposta');
   assert.equal(stats.totalMessages, 1);
 });
 

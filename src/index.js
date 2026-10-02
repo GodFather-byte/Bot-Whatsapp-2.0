@@ -10,10 +10,7 @@ import { createMessageHandler } from './handlers/messages.js';
 import { startReminderScheduler } from './handlers/reminders.js';
 import { createDashboardRouter } from './routes/dashboard.js';
 import { createUsageTracker } from './services/usage.js';
-import { createAgendaService } from './services/agenda.js';
-import { createAgendaNotifier } from './services/agendaNotifier.js';
-import { createGoogleCalendar, parseServiceAccount } from './services/calendar.js';
-import { startAgendaScheduler } from './handlers/agendaScheduler.js';
+import { createPresenceTracker } from './services/presence.js';
 
 const startedAt = Date.now();
 const stats = {
@@ -33,7 +30,7 @@ const getConnectionStatus = () => ({
   bots: bots.map(({ bot, whatsapp }) => ({ numero: bot.number || bot.id, conectado: whatsapp.isConnected() }))
 });
 const app = express();
-app.get('/', (_req, res) => res.send('🤖 Bot do WhatsApp Online na Nuvem!'));
+app.get('/', (_req, res) => res.send('🤖 Bot PH Zeus online!'));
 // Para monitores como o UptimeRobot: responde 503 quando algum número do WhatsApp está desconectado.
 app.get('/health', (_req, res) => {
   const { whatsappConnected } = getConnectionStatus();
@@ -61,6 +58,7 @@ const gemini = createGeminiService({
   timeoutMs: config.geminiTimeout,
   apiKeys: config.toolApiKeys,
   timeZone: config.timeZone,
+  ownerName: config.ownerName,
   onUsage: (event) => usage.record(event)
 });
 const usage = createUsageTracker({ storage, logger });
@@ -70,41 +68,10 @@ if (botNumbers.length) await storage.adoptUntaggedData(config.bots[0].id);
 // Números e LIDs dos próprios bots, para que eles nunca respondam uns aos outros.
 const botIdentities = new Set(botNumbers);
 
-// Google Agenda é opcional: sem as duas variáveis, a dona recebe só o aviso e o arquivo .ics no WhatsApp.
-let googleCalendar = null;
-if (config.googleCalendarId && config.googleServiceAccount) {
-  try {
-    googleCalendar = createGoogleCalendar({
-      calendarId: config.googleCalendarId,
-      credentials: parseServiceAccount(config.googleServiceAccount)
-    });
-    logger.info('Google Agenda ligado: os agendamentos serão criados na agenda configurada.');
-  } catch (error) {
-    logger.warn({ err: error }, 'Google Agenda desativado: credenciais inválidas');
-  }
-} else if (config.googleCalendarId || config.googleServiceAccount) {
-  logger.warn('Google Agenda desativado: defina GOOGLE_CALENDAR_ID e GOOGLE_SERVICE_ACCOUNT_JSON juntos.');
-}
-
 bots = config.bots.map((bot) => {
   const botStorage = bot.number ? storage.forBot(bot.id) : storage;
   const botLogger = logger.child({ bot: bot.id });
-  // O notificador só usa o WhatsApp depois que a conexão abre, então pode referenciá-lo de forma preguiçosa.
-  const notifier = createAgendaNotifier({
-    getSocket: () => whatsapp.getSocket(),
-    ownerNumbers: config.ownerNumbers,
-    timeZone: config.timeZone,
-    googleCalendar,
-    logger: botLogger
-  });
-  const { summaryHour, ...agendaRules } = config.agenda;
-  const agenda = createAgendaService({
-    storage: botStorage,
-    timeZone: config.timeZone,
-    ...agendaRules,
-    hooks: notifier.hooks,
-    logger: botLogger
-  });
+  const presence = createPresenceTracker({ ...config.presence, timeZone: config.timeZone });
   const whatsapp = createWhatsAppService({
     config,
     bot,
@@ -130,7 +97,8 @@ bots = config.bots.map((bot) => {
       getStatus: getConnectionStatus,
       usage,
       dailyLimit: config.geminiDailyLimit,
-      agenda
+      presence,
+      notifyOwner: config.notifyOwner
     })
   });
   const stopReminderScheduler = startReminderScheduler({
@@ -146,15 +114,7 @@ bots = config.bots.map((bot) => {
     logger: botLogger,
     timeZone: config.timeZone
   });
-  const stopAgendaScheduler = startAgendaScheduler({
-    agenda,
-    storage: botStorage,
-    sendToOwners: notifier.sendToOwners,
-    summaryHour,
-    timeZone: config.timeZone,
-    logger: botLogger
-  });
-  return { bot, whatsapp, stopReminderScheduler, stopAgendaScheduler };
+  return { bot, whatsapp, stopReminderScheduler };
 });
 logger.info({ numeros: bots.map(({ bot }) => bot.number || bot.id) }, 'Iniciando bots do WhatsApp');
 
@@ -163,9 +123,8 @@ for (const { whatsapp } of bots) await whatsapp.connect();
 async function shutdown() {
   clearInterval(statsTimer);
   await saveStats();
-  for (const { whatsapp, stopReminderScheduler, stopAgendaScheduler } of bots) {
+  for (const { whatsapp, stopReminderScheduler } of bots) {
     stopReminderScheduler();
-    stopAgendaScheduler();
     await whatsapp.close();
   }
   await storage.close();

@@ -1,55 +1,4 @@
-import { business } from '../business/botPhZeus.js';
-
 export const toolDeclarations = [
-  {
-    name: 'consultar_horarios_livres',
-    description: 'Consulta os horários livres do estúdio para agendamento. Com a data (AAAA-MM-DD) mostra aquele dia; sem data, mostra os próximos dias com horário livre. Use sempre antes de oferecer ou confirmar um horário.',
-    parameters: {
-      type: 'OBJECT',
-      properties: { data: { type: 'STRING', description: 'Data no formato AAAA-MM-DD (opcional).' } }
-    }
-  },
-  {
-    name: 'agendar_horario',
-    description: 'Agenda um horário para o cliente desta conversa. Só chame depois de o cliente confirmar protocolo, duração, data, horário e nome.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        data: { type: 'STRING', description: 'Data no formato AAAA-MM-DD.' },
-        hora: { type: 'STRING', description: 'Horário HH:MM, um dos horários livres informados pela ferramenta.' },
-        protocolo: { type: 'STRING', description: 'Bronze, Prata ou Ouro.' },
-        duracao_minutos: { type: 'INTEGER', description: '20 ou 30.' },
-        nome: { type: 'STRING', description: 'Nome do cliente para o agendamento.' }
-      },
-      required: ['data', 'hora', 'protocolo', 'duracao_minutos', 'nome']
-    }
-  },
-  {
-    name: 'meus_agendamentos',
-    description: 'Lista os agendamentos futuros do cliente desta conversa, com o código de cada um.'
-  },
-  {
-    name: 'cancelar_agendamento',
-    description: 'Cancela um agendamento do cliente desta conversa, depois de ele confirmar.',
-    parameters: {
-      type: 'OBJECT',
-      properties: { codigo: { type: 'STRING', description: 'Código do agendamento, como A7K3Q.' } },
-      required: ['codigo']
-    }
-  },
-  {
-    name: 'remarcar_agendamento',
-    description: 'Muda um agendamento do cliente desta conversa para outro horário livre, mantendo protocolo e duração. Consulte os horários livres antes.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        codigo: { type: 'STRING', description: 'Código do agendamento, como A7K3Q.' },
-        data: { type: 'STRING', description: 'Nova data no formato AAAA-MM-DD.' },
-        hora: { type: 'STRING', description: 'Novo horário HH:MM.' }
-      },
-      required: ['codigo', 'data', 'hora']
-    }
-  },
   {
     name: 'obter_clima',
     description: 'Consulta o clima atual de uma cidade.',
@@ -139,40 +88,8 @@ async function fetchJson(url) {
   return response.json();
 }
 
-const agendaUnavailable = {
-  ok: false,
-  indisponivel: true,
-  erro: 'A agenda online não está disponível nesta conversa.',
-  orientacao: `Peça para o cliente agendar direto com a dona do estúdio, pelo WhatsApp ${business.bookingWhatsapp}.`
-};
-
-// `agenda` e `client` vêm do bot (não da IA): o cliente só enxerga e altera os próprios agendamentos.
-export async function executeTool(name, args = {}, { apiKeys = {}, agenda, client } = {}) {
-  const text = (value) => String(value ?? '').trim();
+export async function executeTool(name, args = {}, { apiKeys = {} } = {}) {
   switch (name) {
-    case 'consultar_horarios_livres':
-      if (!agenda) return agendaUnavailable;
-      return args.data ? agenda.availability(text(args.data)) : agenda.nextAvailability();
-    case 'agendar_horario':
-      if (!agenda || !client) return agendaUnavailable;
-      return agenda.book({
-        clientJid: client.jid,
-        clientNumber: client.number,
-        clientName: text(args.nome) || client.name,
-        protocol: args.protocolo,
-        durationMin: args.duracao_minutos,
-        date: text(args.data),
-        time: text(args.hora)
-      });
-    case 'meus_agendamentos':
-      if (!agenda || !client) return agendaUnavailable;
-      return { ok: true, agendamentos: await agenda.listClient(client.jid) };
-    case 'cancelar_agendamento':
-      if (!agenda || !client) return agendaUnavailable;
-      return agenda.cancel({ id: args.codigo, requesterJid: client.jid, by: 'cliente' });
-    case 'remarcar_agendamento':
-      if (!agenda || !client) return agendaUnavailable;
-      return agenda.reschedule({ id: args.codigo, requesterJid: client.jid, date: text(args.data), time: text(args.hora) });
     case 'obter_clima': {
       if (!apiKeys.weather) return { erro: 'Consulta de clima indisponível: configure TOOL_WEATHER_API_KEY.' };
       const url = new URL('https://api.openweathermap.org/data/2.5/weather');
