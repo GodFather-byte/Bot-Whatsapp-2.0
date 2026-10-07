@@ -85,6 +85,7 @@ export function loadConfig(env = process.env) {
     allowedNumbersConfigured: env.WHATSAPP_ALLOWED_NUMBERS !== undefined,
     geminiApiKey: env.GEMINI_API_KEY || '',
     geminiModel: env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    geminiImageModel: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
     geminiMaxTokens: maxTokens,
     geminiTimeout,
     geminiDailyLimit: nonNegativeInteger(env.GEMINI_LIMITE_DIARIO, 0, 'GEMINI_LIMITE_DIARIO'),

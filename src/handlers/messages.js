@@ -173,6 +173,12 @@ export function createMessageHandler({
     }
   }
 
+  // Respostas de comando são texto ou { image, caption } (ex.: /imagem).
+  async function sendCommandReply(sock, remoteJid, reply) {
+    if (typeof reply === 'string') return send(sock, remoteJid, reply, undefined, { native: true });
+    await sock.sendMessage(remoteJid, { image: reply.image.buffer, mimetype: reply.image.mimetype, caption: reply.caption || undefined });
+  }
+
   async function reportFailure(sock, remoteJid, error) {
     recordEvent(stats.errorEvents, new Date());
     logger.error({ err: error, remoteJid }, 'Falha ao processar mensagem');
@@ -275,7 +281,7 @@ export function createMessageHandler({
       const reply = adminMatch
         ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence })
         : await handleCommand(text, remoteJid, { storage, gemini, stats, timeZone });
-      if (reply !== null) await send(sock, remoteJid, reply, undefined, { native: true });
+      if (reply !== null) await sendCommandReply(sock, remoteJid, reply);
     } catch (error) {
       await reportFailure(sock, remoteJid, error);
     }
@@ -353,7 +359,7 @@ export function createMessageHandler({
           ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence })
           : await handleCommand(commandText, remoteJid, { storage, gemini, stats, timeZone });
         if (reply !== null) {
-          await send(sock, remoteJid, reply, undefined, { native: true });
+          await sendCommandReply(sock, remoteJid, reply);
           return;
         }
       }

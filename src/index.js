@@ -54,6 +54,7 @@ statsTimer.unref();
 const gemini = createGeminiService({
   apiKey: config.geminiApiKey,
   model: config.geminiModel,
+  imageModel: config.geminiImageModel,
   maxTokens: config.geminiMaxTokens,
   timeoutMs: config.geminiTimeout,
   apiKeys: config.toolApiKeys,
