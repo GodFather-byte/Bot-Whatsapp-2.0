@@ -4,7 +4,7 @@ import { parseBusinessHours } from '../utils/time.js';
 
 const adminHelp = [
   'Comandos do dono (escreva na conversa "Você", consigo mesmo):',
-  '/admin ausente [auto|on|off] — auto: responde quando você está offline; on: responde sempre; off: fica quieto',
+  '/admin ausente [auto|on|off] — on (padrão): responde sempre; auto: só quando você está offline; off: fica quieto',
   '/admin horarioausente <regras> | desligar — horários em que você está sempre ausente (ex.: seg-sex 09:00-18:00; dom 00:00-23:59)',
   '/admin instrucoes <texto> | limpar — o que o assistente pode saber/dizer por você (ex.: "Estou em viagem até sexta.")',
   '/admin status — estatísticas e conexão',
@@ -18,7 +18,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function describeSettings(settings, presence) {
   return [
-    `Modo ausente: ${settings.ausencia || 'auto'}`,
+    `Modo ausente: ${settings.ausencia || 'on'}`,
     `Horário de ausência: ${settings.ausenciaHorario || '(nenhum)'}`,
     `No modo auto, o assistente responde se você ficou ${presence?.idleMinutes ?? '?'} min sem enviar mensagens, e se cala ${presence?.takeoverMinutes ?? '?'} min numa conversa em que você respondeu.`,
     `Instruções: ${settings.instrucoes || '(nenhuma)'}`
@@ -89,7 +89,7 @@ export async function handleAdminCommand(argument, {
       return updateTextSetting(storage, 'instrucoes', value, 'Instruções');
     case 'ausente': {
       const mode = value.toLowerCase();
-      if (!mode) return `Modo ausente: ${(await storage.getBotSettings()).ausencia || 'auto'}. Use /admin ausente auto|on|off.`;
+      if (!mode) return `Modo ausente: ${(await storage.getBotSettings()).ausencia || 'on'}. Use /admin ausente auto|on|off.`;
       if (!AWAY_MODES.includes(mode)) return 'Use /admin ausente auto, on ou off.';
       await storage.updateBotSettings({ ausencia: mode });
       return {

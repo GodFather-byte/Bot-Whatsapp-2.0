@@ -320,8 +320,8 @@ export function createMessageHandler({
       if (!isOwner && !allowlist.isAllowed(senderJid, senderAlt, ...senderNumbers)) return;
 
       const settings = await storage.getBotSettings();
-      // O assistente só fala por você quando você está ausente (modo "auto") ou quando você mandou ligar (modo "on").
-      if (!isOwner && !presence.isAway({ mode: settings.ausencia, schedule: settings.ausenciaHorario, chatJid: remoteJid })) return;
+      // Por padrão o assistente responde a todos (modo "on"); "auto" e "off" continuam disponíveis com /admin ausente.
+      if (!isOwner && !presence.isAway({ mode: settings.ausencia || 'on', schedule: settings.ausenciaHorario, chatJid: remoteJid })) return;
 
       if (!isOwner) {
         const rate = rateLimiter.consume(senderJid);
