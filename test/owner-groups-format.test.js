@@ -138,12 +138,12 @@ test('messages sent in quick succession get a single answer', async () => {
   assert.equal(sent.length, 1);
 });
 
-test('the assistant answers only while the owner is away, and the owner can force it on or off', async () => {
+test('in auto mode the assistant answers only while the owner is away, and the owner can force it on or off', async () => {
   let now = new Date('2026-10-01T13:00:00Z').getTime(); // qui 10:00 em São Paulo
   const { handler, sock, from, prompts, sent, storage } = setup({ handler: { now: () => now, ownerNumbers: [] } });
   const jid = '5531777777777@s.whatsapp.net';
   const own = (remoteJid, text, id) => handler(sock, { key: { remoteJid, fromMe: true, id }, message: { conversation: text } });
-  await storage.updateBotSettings({ instrucoes: 'Estou em viagem até sexta.' });
+  await storage.updateBotSettings({ instrucoes: 'Estou em viagem até sexta.', ausencia: 'auto' });
 
   // O dono acabou de escrever para outra pessoa: está online, o assistente fica quieto.
   await own('5531666666666@s.whatsapp.net', 'oi, já te ligo', 'a1');
@@ -177,6 +177,14 @@ test('the assistant answers only while the owner is away, and the owner can forc
   await own('5531000000000@s.whatsapp.net', 'oi', 'a6');
   await from('5531555555555@s.whatsapp.net', 'oi');
   assert.equal(prompts.length, 4);
+});
+
+test('by default the assistant answers everyone, even right after the owner was active', async () => {
+  const now = new Date('2026-10-01T13:00:00Z').getTime();
+  const { handler, sock, from, prompts } = setup({ handler: { now: () => now, ownerNumbers: [] } });
+  await handler(sock, { key: { remoteJid: '5531666666666@s.whatsapp.net', fromMe: true, id: 'd1' }, message: { conversation: 'oi' } });
+  await from('5531777777777@s.whatsapp.net', 'oi');
+  assert.equal(prompts.length, 1);
 });
 
 test('answers sent by the bot itself never count as the owner being online', async () => {
