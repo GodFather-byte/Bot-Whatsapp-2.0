@@ -75,3 +75,28 @@ test('presence: an away schedule makes the assistant answer even with the owner 
   assert.equal(tracker.isAway({ schedule: 'sab 09:00-18:00', chatJid: 'a@s.whatsapp.net' }), false);
   assert.equal(tracker.isAway({ schedule: 'horário quebrado', chatJid: 'a@s.whatsapp.net' }), false);
 });
+
+test('generateImage returns the inline image from the Gemini image model', async () => {
+  const requests = [];
+  const gemini = createGeminiService({
+    model: 'm',
+    imageModel: 'img',
+    ai: {
+      models: {
+        generateContent: async (request) => {
+          requests.push(request);
+          return { candidates: [{ content: { parts: [{ text: 'Aqui está.' }, { inlineData: { data: Buffer.from('png').toString('base64'), mimeType: 'image/png' } }] } }] };
+        }
+      }
+    }
+  });
+  const image = await gemini.generateImage({ prompt: 'um leão de terno' });
+  assert.equal(requests[0].model, 'img');
+  assert.deepEqual(requests[0].config.responseModalities, ['TEXT', 'IMAGE']);
+  assert.equal(image.buffer.toString(), 'png');
+  assert.equal(image.mimetype, 'image/png');
+  assert.equal(image.text, 'Aqui está.');
+
+  const empty = createGeminiService({ model: 'm', ai: { models: { generateContent: async () => ({ candidates: [{ content: { parts: [{ text: 'não posso' }] } }] }) } } });
+  await assert.rejects(() => empty.generateImage({ prompt: 'x' }), /nenhuma imagem/);
+});

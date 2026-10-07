@@ -52,6 +52,7 @@ function instructionFor(user, extraInstruction, { assistant, now, timeZone }) {
 export function createGeminiService({
   apiKey,
   model,
+  imageModel = 'gemini-2.5-flash-image',
   maxTokens,
   timeoutMs,
   apiKeys = {},
@@ -190,5 +191,19 @@ export function createGeminiService({
     throw new Error('O Gemini excedeu o limite de chamadas de ferramentas.');
   }
 
-  return { generate, stream };
+  // Gera uma imagem a partir de um prompt. Devolve { buffer, mimetype, text } ou lança erro se o modelo não devolver imagem.
+  async function generateImage({ prompt }) {
+    const response = await callWithRetry({
+      model: imageModel,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: { responseModalities: ['TEXT', 'IMAGE'] }
+    });
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    const image = parts.find((part) => part.inlineData?.data);
+    if (!image) throw new Error('O Gemini não devolveu nenhuma imagem para esse pedido.');
+    const text = parts.map((part) => part.text || '').join('').trim();
+    return { buffer: Buffer.from(image.inlineData.data, 'base64'), mimetype: image.inlineData.mimeType || 'image/png', text };
+  }
+
+  return { generate, stream, generateImage };
 }

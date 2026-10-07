@@ -9,7 +9,7 @@ const commandHelp = [
   '/resumo — resume as últimas mensagens',
   '/persona formal|engraçado|técnico — altera o tom das respostas',
   '/idioma pt-BR|en|es — altera o idioma das respostas',
-  '/imagem <prompt> — cria uma descrição de imagem',
+  '/imagem <descrição> — gera uma imagem com o Gemini',
   '/lembrete <quando> <mensagem> — agenda um lembrete (ex.: 14:30, amanhã 09:00, 25/12 10:00, em 30 min, todo dia 08:00, toda segunda 09:00)',
   '/lembretes — lista seus lembretes',
   '/cancelar_lembrete <id> — cancela um lembrete'
@@ -84,12 +84,9 @@ export async function handleCommand(text, remoteJid, {
       return `Idioma alterado para ${language}.`;
     }
     case 'imagem': {
-      if (!argument) return 'Use /imagem seguido da ideia que deseja transformar em um prompt de imagem.';
-      const user = await storage.getUser(remoteJid);
-      return toWhatsAppFormat(await gemini.generate({
-        text: `Crie uma descrição visual detalhada (prompt) para desenhar ou gerar esta imagem: ${argument}. Deixe claro na resposta que você está gerando apenas a descrição em texto e não uma imagem real.`,
-        user
-      }));
+      if (!argument) return 'Use /imagem seguido do que você quer ver. Ex.: /imagem um leão de terno em um escritório escuro';
+      const image = await gemini.generateImage({ prompt: argument });
+      return { image: { buffer: image.buffer, mimetype: image.mimetype }, caption: image.text ? toWhatsAppFormat(image.text) : '' };
     }
     case 'lembrete': {
       const reminder = parseReminder(argument, now(), timeZone);

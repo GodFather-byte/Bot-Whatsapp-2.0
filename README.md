@@ -111,6 +111,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `MONGODB_URI` | ⛔ Opcional | Persiste sessão e conversas; sem Mongo, conversas ficam em memória. |
 | `MONGODB_DB_NAME` | ⛔ Opcional | Nome do banco no MongoDB (padrão `whatsapp-gemini-bot`). |
 | `GEMINI_MODEL` | ⛔ Opcional | Modelo Gemini; padrão `gemini-3.5-flash-lite`. |
+| `GEMINI_IMAGE_MODEL` | ⛔ Opcional | Modelo usado por `/imagem`; padrão `gemini-2.5-flash-image`. |
 | `GEMINI_MAX_TOKENS` / `GEMINI_TIMEOUT` | ⛔ Opcional | Limite de saída e tempo limite das chamadas Gemini. |
 | `GEMINI_LIMITE_DIARIO` | ⛔ Opcional | Limite de chamadas por dia do seu plano (veja em AI Studio > Rate limits); faz o `/admin uso` mostrar a porcentagem usada. |
 | `PORT` / `LOG_LEVEL` | ⛔ Opcional | Porta HTTP (padrão `3000`) e nível dos logs. |
@@ -127,7 +128,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 Escreva na conversa **"Você"** (consigo mesmo) do WhatsApp, ou de um número de `NUMERO_DONO`. Para os contatos, uma mensagem começando com `/` é texto comum: o consigliere conversa normalmente e não revela nada. Só o chefe dá ordens.
 
 - `/lembrete <quando> <mensagem>`, `/lembretes` e `/cancelar_lembrete <id>` — lembretes que chegam para você. Aceitam `14:30`, `amanhã 09:00`, `25/12 10:00`, `25/12/2027 10:00`, `em 30 min`, `em 2 horas`, `todo dia 08:00` e `toda segunda 09:00`, no fuso de `FUSO_HORARIO`
-- `/resumo`, `/reset`, `/ajuda`, `/status`, `/persona formal|engraçado|técnico`, `/idioma pt-BR|en|es` e `/imagem <prompt>`
+- `/resumo`, `/reset`, `/ajuda`, `/status`, `/persona formal|engraçado|técnico`, `/idioma pt-BR|en|es` e `/imagem <descrição>` (gera uma imagem com o Gemini e envia no chat)
 
 ### Ordens de administração (`/admin`)
 
