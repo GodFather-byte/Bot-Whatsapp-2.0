@@ -290,7 +290,8 @@ export function createMessageHandler({
   return async function handleMessage(sock, msg) {
     if (!msg?.message) return;
     const remoteJid = msg.key?.remoteJid;
-    if (!remoteJid || remoteJid === 'status@broadcast') return;
+    // Status, listas de transmissão e canais (newsletters) não são conversas: o bot nunca responde a eles.
+    if (!remoteJid || remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@newsletter')) return;
     trackSentIds(sock);
     // Mensagens do próprio número são do dono digitando no celular (ou respostas do bot, que são ignoradas).
     // Elas mostram que o dono está online: o assistente se cala naquela conversa e não responde enquanto ele estiver ativo.
