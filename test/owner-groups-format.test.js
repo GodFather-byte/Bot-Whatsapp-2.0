@@ -228,3 +228,10 @@ test('admin commands work in the bot phone "message yourself" chat, without answ
   assert.deepEqual(sent.map(({ jid }) => jid), ['5511000000000@s.whatsapp.net', '777000@lid']);
   assert.equal(prompts.length, 0);
 });
+
+test('messages from channels and broadcast lists are ignored', async () => {
+  const { handler, sock, from, prompts } = setup({ handler: { ownerNumbers: [] } });
+  await from('120363173003902460@newsletter', 'novidade do canal');
+  await from('123456@broadcast', 'lista de transmissão');
+  assert.equal(prompts.length, 0);
+});
