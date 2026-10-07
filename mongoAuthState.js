@@ -95,6 +95,10 @@ export async function useMongoDBAuthState(
     saveCreds: async () => {
       await writeData('creds', creds);
     },
+    // Apaga a sessão (creds + chaves) quando o WhatsApp a invalida, para permitir novo pareamento.
+    clear: async () => {
+      await collection.deleteMany({});
+    },
     // Permite fechar a conexão com o MongoDB de forma limpa ao encerrar o processo.
     close: async () => {
       await client.close();

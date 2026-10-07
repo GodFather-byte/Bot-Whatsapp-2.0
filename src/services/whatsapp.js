@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, rename } from 'node:fs/promises';
+import { readFile, rename, rm } from 'node:fs/promises';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { sessionPhoneNumber, useMongoDBAuthState } from '../../mongoAuthState.js';
@@ -8,13 +8,13 @@ const LEGACY_AUTH_FOLDER = 'auth_info_baileys';
 const LEGACY_AUTH_COLLECTION = 'auth_state';
 
 async function useFileAuthState(number) {
-  if (!number) return useMultiFileAuthState(LEGACY_AUTH_FOLDER);
-  const folder = `${LEGACY_AUTH_FOLDER}_${number}`;
-  if (!existsSync(folder) && existsSync(`${LEGACY_AUTH_FOLDER}/creds.json`)) {
+  const folder = number ? `${LEGACY_AUTH_FOLDER}_${number}` : LEGACY_AUTH_FOLDER;
+  if (number && !existsSync(folder) && existsSync(`${LEGACY_AUTH_FOLDER}/creds.json`)) {
     const creds = JSON.parse(await readFile(`${LEGACY_AUTH_FOLDER}/creds.json`, 'utf8'));
     if (sessionPhoneNumber(creds) === number) await rename(LEGACY_AUTH_FOLDER, folder);
   }
-  return useMultiFileAuthState(folder);
+  const authState = await useMultiFileAuthState(folder);
+  return { ...authState, clear: () => rm(folder, { recursive: true, force: true }) };
 }
 
 export function createWhatsAppService({
@@ -32,6 +32,7 @@ export function createWhatsAppService({
   let reconnectAttempts = 0;
   let stopping = false;
   let connecting = false;
+  let currentAuthState;
 
   async function getAuthState() {
     if (config.mongoUri) {
@@ -61,6 +62,7 @@ export function createWhatsAppService({
         if (mongoAuthState) await mongoAuthState.close().catch(() => {});
         mongoAuthState = authState;
       }
+      currentAuthState = authState;
 
       socket = makeWASocket({
         auth: state,
@@ -96,15 +98,25 @@ export function createWhatsAppService({
         if (connection === 'close') {
           const loggedOut = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut;
           logger.warn({ loggedOut }, 'Conexão do WhatsApp encerrada');
-          if (!loggedOut && !stopping) {
+          if (!stopping) {
             clearTimeout(reconnectTimer);
             const delay = Math.min(3000 * (2 ** reconnectAttempts), 60000);
             reconnectAttempts += 1;
-            logger.info(`Tentando reconectar em ${delay / 1000} segundos...`);
-            reconnectTimer = setTimeout(() => {
-              connect().catch((error) => logger.error({ err: error }, 'Falha ao reconectar WhatsApp'));
+            const authState = currentAuthState;
+            reconnectTimer = setTimeout(async () => {
+              try {
+                if (loggedOut) {
+                  // Sessão invalidada pelo WhatsApp: descarta as credenciais para gerar novo código de pareamento.
+                  logger.warn('Sessão invalidada; limpando credenciais para um novo pareamento.');
+                  await authState?.clear?.();
+                }
+                await connect();
+              } catch (error) {
+                logger.error({ err: error }, 'Falha ao reconectar WhatsApp');
+              }
             }, delay);
             reconnectTimer.unref?.();
+            logger.info(`Tentando reconectar em ${delay / 1000} segundos...`);
           }
         }
       });
