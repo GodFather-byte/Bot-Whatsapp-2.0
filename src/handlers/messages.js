@@ -287,12 +287,16 @@ export function createMessageHandler({
     }
   }
 
+  // Registra por que uma mensagem não foi respondida: sem isso, "o bot não responde" é impossível de diagnosticar pelos logs.
+  const skip = (reason, remoteJid) => logger.info?.({ motivo: reason, de: remoteJid }, 'Mensagem não respondida');
+
   return async function handleMessage(sock, msg) {
     if (!msg?.message) return;
     const remoteJid = msg.key?.remoteJid;
     // Status, listas de transmissão e canais (newsletters) não são conversas: o bot nunca responde a eles.
     if (!remoteJid || remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@newsletter')) return;
     trackSentIds(sock);
+    logger.info?.({ de: remoteJid, minha: Boolean(msg.key?.fromMe) }, 'Mensagem recebida');
     // Mensagens do próprio número são do dono digitando no celular (ou respostas do bot, que são ignoradas).
     // Elas mostram que o dono está online: o assistente se cala naquela conversa e não responde enquanto ele estiver ativo.
     if (msg.key?.fromMe) {
@@ -304,31 +308,31 @@ export function createMessageHandler({
       return;
     }
     const isGroup = remoteJid.endsWith('@g.us');
-    if (isGroup && !groupsEnabled) return;
+    if (isGroup && !groupsEnabled) return skip('grupos desligados (GRUPOS_ATIVADOS=false)', remoteJid);
 
     const senderJid = isGroup ? msg.key.participant : remoteJid;
     const senderAlt = isGroup ? msg.key.participantAlt : msg.key.remoteJidAlt;
     if (!senderJid) return;
     // Evita que os números do próprio bot fiquem respondendo uns aos outros.
-    if (ignored.has(jidUser(senderJid)) || ignored.has(jidUser(senderAlt))) return;
+    if (ignored.has(jidUser(senderJid)) || ignored.has(jidUser(senderAlt))) return skip('remetente é um dos números do próprio bot', remoteJid);
 
-    if (!isFreshAndNew(msg, remoteJid)) return;
+    if (!isFreshAndNew(msg, remoteJid)) return skip('mensagem antiga (mais de 2 min) ou repetida', remoteJid);
 
     const message = unwrapMessage(msg.message);
     // Em grupos, o bot só responde quando é mencionado ou quando respondem a uma mensagem dele.
-    if (isGroup && !isAddressedToBot(sock, getContextInfo(message))) return;
+    if (isGroup && !isAddressedToBot(sock, getContextInfo(message))) return skip('grupo sem menção ao bot', remoteJid);
 
     await withPresence(sock, remoteJid, async () => {
       const senderNumbers = await resolveSenderNumbers(sock, senderJid, senderAlt, logger);
       const isOwner = senderNumbers.some((number) => owners.has(number));
-      if (!isOwner && await storage.isBlocked(senderNumbers)) return;
+      if (!isOwner && await storage.isBlocked(senderNumbers)) return skip('número bloqueado', remoteJid);
 
       // Número fora da lista permitida: o assistente finge que não viu, sem avisar a pessoa.
-      if (!isOwner && !allowlist.isAllowed(senderJid, senderAlt, ...senderNumbers)) return;
+      if (!isOwner && !allowlist.isAllowed(senderJid, senderAlt, ...senderNumbers)) return skip('número fora de WHATSAPP_ALLOWED_NUMBERS', remoteJid);
 
       const settings = await storage.getBotSettings();
       // Por padrão o assistente responde a todos (modo "on"); "auto" e "off" continuam disponíveis com /admin ausente.
-      if (!isOwner && !presence.isAway({ mode: settings.ausencia || 'on', schedule: settings.ausenciaHorario, chatJid: remoteJid })) return;
+      if (!isOwner && !presence.isAway({ mode: settings.ausencia || 'on', schedule: settings.ausenciaHorario, chatJid: remoteJid })) return skip(`dono ativo ou modo ausente desligado (modo: ${settings.ausencia || 'on'})`, remoteJid);
 
       if (!isOwner) {
         const rate = rateLimiter.consume(senderJid);
