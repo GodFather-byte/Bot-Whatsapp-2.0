@@ -55,6 +55,8 @@ function positiveInteger(value, fallback, variable) {
   return parsed;
 }
 
+const DEFAULT_CREATOR_NUMBER = '5511915168336';
+
 export function loadConfig(env = process.env) {
   const port = positiveInteger(env.PORT, 3000, 'PORT');
   const reminderCheckInterval = positiveInteger(
@@ -78,6 +80,8 @@ export function loadConfig(env = process.env) {
     logLevel: env.LOG_LEVEL || 'info',
     bots,
     ownerNumbers: parseAllowedNumbers(env.NUMERO_DONO, 'NUMERO_DONO'),
+    // O criador do bot tem comandos próprios (/criador) e o assistente sabe quem ele é. Configure NUMERO_CRIADOR para trocar.
+    creatorNumbers: parseAllowedNumbers(env.NUMERO_CRIADOR ?? DEFAULT_CREATOR_NUMBER, 'NUMERO_CRIADOR'),
     timeZone: parseTimeZone(env.FUSO_HORARIO),
     messageDebounceMs: nonNegativeInteger(env.JUNTAR_MENSAGENS_MS, 2500, 'JUNTAR_MENSAGENS_MS'),
     groupsEnabled: parseBoolean(env.GRUPOS_ATIVADOS, false),

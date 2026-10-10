@@ -4,7 +4,7 @@
 >
 > ⚠️ **Aviso:** a máfia aqui é de **brincadeira**. Ninguém é ameaçado, nenhuma cabeça de cavalo é entregue. O máximo que acontece é um contato receber uma resposta educada de um robô.
 
-O **Bot PH Zeus** é o consigliere de confiança do chefe (você). Quando o **chefe não está online**, é ele quem atende a porta: se apresenta, anota o recado, resolve o que dá para resolver e depois **conta tudo ao chefe**. Por trás dos panos, usa o [Baileys](https://github.com/WhiskeySockets/Baileys) para se infiltrar no seu WhatsApp como "aparelho conectado" e o **Google Gemini** (`@google/genai`) como cérebro da operação. Trabalha 24/7 na nuvem (ex: [Render](https://render.com)), com a sessão guardada no **MongoDB** (o cofre da família) para sobreviver a reinícios.
+O **Bot PH Zeus** é o consigliere de confiança do chefe (você). Quando o **chefe não está online**, é ele quem atende a porta: se apresenta, conversa em tom mafioso, resolve o que dá para resolver, anota o recado quando há um e depois **conta tudo ao chefe**. Por trás dos panos, usa o [Baileys](https://github.com/WhiskeySockets/Baileys) para se infiltrar no seu WhatsApp como "aparelho conectado" e o **Google Gemini** (`@google/genai`) como cérebro da operação. Trabalha 24/7 na nuvem (ex: [Render](https://render.com)), com a sessão guardada no **MongoDB** (o cofre da família) para sobreviver a reinícios.
 
 ## 🏛️ A hierarquia da família
 
@@ -117,6 +117,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `PORT` / `LOG_LEVEL` | ⛔ Opcional | Porta HTTP (padrão `3000`) e nível dos logs. |
 | `DASHBOARD_ENABLED` | ⛔ Opcional | Habilita `/dashboard`; requer `DASHBOARD_AUTH_TOKEN`. |
 | `REMINDER_CHECK_INTERVAL` | ⛔ Opcional | Intervalo de verificação em milissegundos. |
+| `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
 | `SILENCIAR_APOS_RESPOSTA_MIN` | ⛔ Opcional | Minutos em que o assistente se cala numa conversa depois que você responde (padrão `60`). |
@@ -140,6 +141,21 @@ Escreva na conversa **"Você"** (consigo mesmo) do WhatsApp, ou de um número de
 - `/admin config` — configurações atuais
 - `/admin bloquear <número>`, `/admin desbloquear <número>`, `/admin bloqueados` — números que o assistente ignora
 - `/admin aviso <texto>` — envia um recado para todos os contatos que já conversaram com o assistente, um a cada 2 segundos
+
+### Variedade nas respostas
+
+A IA não aprende sozinha entre conversas, então a variedade vem do prompt: a cada resposta o bot sorteia um jeito de falar (direto, irônico, caloroso, misterioso...) e recebe o começo das suas últimas respostas com a ordem de começar de outro jeito. Na persona padrão apenas; `/persona formal|técnico|engraçado` mantém o tom escolhido. Quando o criador escreve, o bot sempre o chama de "meu criador" (ou variações).
+
+### Comandos do criador (`/criador`)
+
+Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bot é o do criador) usa estes comandos, **sempre em conversa privada**. Para qualquer outra pessoa, `/criador` é texto comum. O assistente também sabe que está falando com o criador.
+
+- `/criador ping` — confirma que o bot está vivo e que reconheceu você
+- `/criador sistema` — tempo no ar, memória, versão do Node, MongoDB e números conectados
+- `/criador contatos` — quantos contatos já conversaram e as últimas mensagens
+- `/criador historico <número> [quantidade]` — últimas mensagens trocadas com o número (padrão 10, máximo 30)
+- `/criador limpar <número>` — apaga o histórico da conversa com o número
+- `/criador falar <número> <texto>` — o bot envia a mensagem para o número
 
 > ⚠️ Use `/admin aviso` com moderação: envios em massa são o principal motivo de banimento de números pelo WhatsApp.
 
