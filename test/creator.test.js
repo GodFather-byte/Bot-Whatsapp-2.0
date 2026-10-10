@@ -231,7 +231,7 @@ test('an answer generated while the human was replying is not sent', async () =>
   assert.deepEqual(sent, []);
 });
 
-test('/criador silencio quiets the bot for the contacts while the creator keeps talking to it', async () => {
+test('/criador silencio quiets the bot for everybody, the creator included, until "/pode falar meu filho"', async () => {
   let now = new Date('2026-10-01T13:00:00Z').getTime();
   const { from, sent, prompts } = setup({ handler: { now: () => now } });
   const creatorJid = `${CREATOR}@s.whatsapp.net`;
@@ -239,19 +239,46 @@ test('/criador silencio quiets the bot for the contacts while the creator keeps 
   const bia = '5531888888888@s.whatsapp.net';
 
   await from(creatorJid, '/criador silencio por 2 minutos');
-  assert.match(sent.at(-1).text, /Bico calado com todos os contatos até/);
+  assert.match(sent.at(-1).text, /Bico calado com todos os contatos e com você até/);
+  assert.match(sent.at(-1).text, /\/pode falar meu filho/);
 
   await from(ana, 'oi');
-  await from(bia, 'oi');
-  assert.equal(prompts.length, 0, 'os contatos não são respondidos');
-
   await from(creatorJid, 'e aí, tudo certo?');
-  assert.equal(prompts.length, 1, 'com o criador o bot fala à vontade');
+  assert.equal(prompts.length, 0, 'ninguém é respondido, nem o criador');
+
+  await from(creatorJid, '/criador ping');
+  assert.match(sent.at(-1).text, /Pong/, 'os comandos do criador continuam funcionando em silêncio');
+
+  await from(creatorJid, '/pode falar meu filho');
+  assert.match(sent.at(-1).text, /Agora sim, meu criador/);
+  await from(creatorJid, 'voltou?');
+  assert.equal(prompts.length, 1);
   assert.equal(prompts[0].assistant.isCreator, true);
+  await from(bia, 'oi');
+  assert.equal(prompts.length, 1, 'os contatos seguem em silêncio');
 
   now += 3 * 60_000;
   await from(ana, 'voltou?');
-  assert.equal(prompts.length, 2, 'passados 2 minutos o silêncio acaba');
+  assert.equal(prompts.length, 2, 'passados 2 minutos o silêncio dos contatos acaba');
+});
+
+test('only the creator can lift the silence with "/pode falar meu filho"', async () => {
+  const { from, sent, prompts } = setup();
+  const creatorJid = `${CREATOR}@s.whatsapp.net`;
+  const ana = '5531777777777@s.whatsapp.net';
+
+  await from(creatorJid, '/criador silencio 10 min');
+  await from(ana, '/pode falar meu filho');
+  await from(ana, 'oi');
+  assert.equal(prompts.length, 0, 'um contato não destrava nada');
+  assert.equal(sent.some(({ text }) => /Agora sim/.test(text)), false);
+
+  await from(creatorJid, '/criador silencio cancelar');
+  await from(creatorJid, '/pode falar meu filho');
+  assert.match(sent.at(-1).text, /já estava de boca aberta/);
+  await from(creatorJid, 'oi');
+  await from(ana, 'oi');
+  assert.equal(prompts.length, 2);
 });
 
 test('/criador silencio can target one chat, be cancelled and rejects nonsense', async () => {

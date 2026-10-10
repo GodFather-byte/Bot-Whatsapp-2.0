@@ -31,12 +31,25 @@ export function createPresenceTracker({
   // Silêncio pedido pelo criador (/criador silencio): geral ou de uma conversa, até um horário.
   let silencedAll = 0;
   const silencedChats = new Map();
+  // Conversas liberadas por /pode falar mesmo durante um silêncio geral (a do criador).
+  const allowedChats = new Set();
 
   function silence({ chatJid, minutes }) {
     const until = now() + minutes * MINUTE;
     if (chatJid) silencedChats.set(chatJid, until);
-    else silencedAll = until;
+    else {
+      silencedAll = until;
+      allowedChats.clear();
+    }
     return until;
+  }
+
+  // Libera uma conversa do silêncio (geral ou dela) sem encerrar o silêncio das outras.
+  function allowChat(chatJid) {
+    const was = silencedUntil(chatJid) !== null;
+    silencedChats.delete(chatJid);
+    allowedChats.add(chatJid);
+    return was;
   }
 
   function clearSilence(chatJid) {
@@ -44,12 +57,13 @@ export function createPresenceTracker({
     if (!chatJid) {
       silencedAll = 0;
       silencedChats.clear();
+      allowedChats.clear();
     }
     return had;
   }
 
   function silencedUntil(chatJid) {
-    const until = Math.max(silencedAll, silencedChats.get(chatJid) ?? 0);
+    const until = Math.max(allowedChats.has(chatJid) ? 0 : silencedAll, silencedChats.get(chatJid) ?? 0);
     return until > now() ? until : null;
   }
 
@@ -74,5 +88,5 @@ export function createPresenceTracker({
 
   const lastOwnerActivityIn = (chatJid) => lastByChat.get(chatJid) ?? 0;
 
-  return { silence, clearSilence, silencedUntil, recordOwnerActivity, lastOwnerActivityIn, isTakenOver, isAway, idleMinutes, takeoverMinutes };
+  return { silence, allowChat, clearSilence, silencedUntil, recordOwnerActivity, lastOwnerActivityIn, isTakenOver, isAway, idleMinutes, takeoverMinutes };
 }

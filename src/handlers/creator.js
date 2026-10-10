@@ -9,7 +9,7 @@ const creatorHelp = [
   '/criador historico <número> [quantidade] — últimas mensagens trocadas com esse número (padrão 10)',
   '/criador limpar <número> — apaga o histórico da conversa com esse número',
   '/criador falar <número> <texto> — o bot envia a mensagem para esse número',
-  '/criador silencio [número] <tempo> — o bot para de responder aos contatos (ex.: 2 minutos, 30 min, 1 hora); com número, só essa conversa; "cancelar" volta ao normal. Com você ele continua falando',
+  '/criador silencio [número] <tempo> — o bot para de responder aos contatos (ex.: 2 minutos, 30 min, 1 hora); com número, só essa conversa; "cancelar" volta ao normal. Sem número, ele também se cala com você até você mandar /pode falar meu filho',
   '/admin ajuda — o criador também tem todas as ordens de dono'
 ].join('\n');
 
@@ -125,7 +125,7 @@ export async function handleCreatorCommand(argument, {
       const minutes = parseDuration(argumentText);
       if (!minutes) return usage;
       const until = presence.silence({ chatJid, minutes });
-      return `Bico calado ${target ? `na conversa com ${target}` : 'com todos os contatos'} até ${formatDateTime(new Date(until), timeZone)}. Com você eu continuo falando. Para encerrar antes: /criador silencio cancelar`;
+      return `Bico calado ${target ? `na conversa com ${target}` : 'com todos os contatos e com você'} até ${formatDateTime(new Date(until), timeZone)}. Para eu voltar a falar com você: /pode falar meu filho. Para encerrar tudo antes: /criador silencio cancelar`;
     }
     default:
       return `Comando de criador desconhecido.\n\n${creatorHelp}`;

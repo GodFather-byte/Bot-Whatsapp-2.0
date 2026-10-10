@@ -292,6 +292,12 @@ export function createMessageHandler({
     const context = { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence };
     const adminMatch = text.match(/^\/admin\b\s*([\s\S]*)$/i);
     if (adminMatch) return handleAdminCommand(adminMatch[1], context);
+    // "/pode falar meu filho": só o criador libera o bot para falar de novo na conversa dele depois de um /criador silencio.
+    if (/^\/pode\s+falar\b/i.test(text) && isCreator && !remoteJid.endsWith('@g.us')) {
+      return presence.allowChat(remoteJid)
+        ? 'Agora sim, meu criador! Soltei a língua: pode falar comigo. 🕴️ Os contatos continuam em silêncio até acabar o tempo (ou /criador silencio cancelar).'
+        : 'Eu já estava de boca aberta com você, meu criador. 🕴️';
+    }
     const creatorMatch = text.match(/^\/criador\b\s*([\s\S]*)$/i);
     // Fora de conversa privada ou para quem não é o criador, "/criador" não existe: segue como comando desconhecido/texto comum.
     if (creatorMatch && isCreator && !remoteJid.endsWith('@g.us')) return handleCreatorCommand(creatorMatch[1], context);
@@ -399,6 +405,9 @@ export function createMessageHandler({
           return;
         }
       }
+
+      // Depois de /criador silencio o bot também se cala com o criador, até ele mandar "/pode falar meu filho".
+      if (isCreator && presence.silencedUntil?.(remoteJid)) return skip('criador pediu silêncio (/criador silencio)', remoteJid);
 
       const request = { sock, remoteJid, isGroup, isOwner, isCreator, receivedAt, msg, text, media, settings, senderNumbers };
       if (debounceMs > 0 && !media) {

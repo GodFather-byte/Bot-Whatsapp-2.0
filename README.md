@@ -158,6 +158,8 @@ Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bo
 - `/criador historico <número> [quantidade]` — últimas mensagens trocadas com o número (padrão 10, máximo 30)
 - `/criador limpar <número>` — apaga o histórico da conversa com o número
 - `/criador falar <número> <texto>` — o bot envia a mensagem para o número
+- `/criador silencio <tempo>` — o bot para de responder (ex.: `2 minutos`, `30 min`, `1 hora`; máx. 24 h). Sem número, cala **todos os contatos e também a sua conversa com ele** (os `/comandos` continuam funcionando); só você faz o bot falar de novo ali com `/pode falar meu filho` (os contatos seguem em silêncio). Com um número antes do tempo (`/criador silencio 5511999999999 10 min`), cala só essa conversa. `/criador silencio cancelar` encerra tudo. O silêncio fica na memória: um reinício do bot o zera
+- `/pode falar meu filho` — libera o bot para falar de novo na sua conversa depois de um silêncio
 
 > ⚠️ Use `/admin aviso` com moderação: envios em massa são o principal motivo de banimento de números pelo WhatsApp.
 
