@@ -133,3 +133,34 @@ test('in the "Você" chat /criador works only when the creator is the phone owne
   });
   assert.match(otherPhone.sent.at(-1).text, /Comando desconhecido/);
 });
+
+test('the creator is always greeted as "meu criador"', () => {
+  assert.match(buildAssistantPrompt({ withOwner: true, isCreator: true }), /sempre o chame de "meu criador"/);
+});
+
+test('every answer gets a different way of speaking and avoids the recent openings', async () => {
+  const { createGeminiService } = await import('../src/services/gemini.js');
+  const { VARIATION_STYLES } = await import('../src/assistant/profile.js');
+  const requests = [];
+  const draws = [0, 0.99];
+  const gemini = createGeminiService({
+    model: 'm',
+    random: () => draws.shift() ?? 0.5,
+    ai: { models: { generateContent: async (request) => { requests.push(request); return { text: 'ok' }; } } }
+  });
+  const history = [
+    { role: 'user', conteudo: 'oi' },
+    { role: 'assistant', conteudo: 'Meu amigo, a família agradece o contato e já anota tudo.' }
+  ];
+
+  await gemini.generate({ text: 'oi', history });
+  await gemini.generate({ text: 'oi', history });
+  await gemini.generate({ text: 'oi', user: { persona: 'formal' } });
+
+  const [first, second, formal] = requests.map((request) => request.config.systemInstruction);
+  assert.ok(first.includes(VARIATION_STYLES[0]));
+  assert.ok(second.includes(VARIATION_STYLES.at(-1)));
+  assert.notEqual(first, second);
+  assert.match(first, /começaram assim: "Meu amigo, a família agradece o"/);
+  assert.doesNotMatch(formal, /o jeito de falar é/);
+});

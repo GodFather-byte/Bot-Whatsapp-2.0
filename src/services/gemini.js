@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { toolDeclarations, executeTool } from '../handlers/tools.js';
-import { buildAssistantPrompt } from '../assistant/profile.js';
+import { buildAssistantPrompt, VARIATION_STYLES } from '../assistant/profile.js';
 import { WEEKDAY_LABELS, zonedParts } from '../utils/time.js';
 
 // A persona só ajusta o tom: as regras do assistente (buildAssistantPrompt) vão em toda resposta.
@@ -40,6 +40,15 @@ function todayLine(now, timeZone) {
   return `Data de hoje: ${WEEKDAY_LABELS[local.weekday]}, ${date}, fuso ${timeZone}.`;
 }
 
+// Começo das últimas respostas do assistente, para o prompt pedir que a próxima comece diferente.
+function recentOpenings(history = [], count = 3) {
+  return history
+    .filter(({ role }) => role === 'assistant')
+    .slice(-count)
+    .map(({ conteudo }) => String(conteudo).trim().split(/\s+/).slice(0, 6).join(' '))
+    .filter(Boolean);
+}
+
 function instructionFor(user, extraInstruction, { assistant, now, timeZone }) {
   const persona = user?.persona || 'padrao';
   const base = SYSTEM_INSTRUCTIONS[persona] || SYSTEM_INSTRUCTIONS.padrao;
@@ -60,9 +69,19 @@ export function createGeminiService({
   onUsage = () => {},
   timeZone = 'America/Sao_Paulo',
   now = () => new Date(),
-  ownerName = ''
+  ownerName = '',
+  random = Math.random
 } = {}) {
   const client = ai || (apiKey ? new GoogleGenAI({ apiKey }) : null);
+
+  // Cada resposta recebe um jeito de falar sorteado e a lista de aberturas recentes a evitar.
+  // O jeito sorteado é de consigliere: só vale na persona padrão, para não brigar com /persona formal, técnico etc.
+  const assistantFor = (history, assistant, user) => ({
+    ownerName,
+    variation: !user?.persona || user.persona === 'padrao' ? VARIATION_STYLES[Math.floor(random() * VARIATION_STYLES.length)] : '',
+    avoidOpenings: recentOpenings(history),
+    ...assistant
+  });
 
   async function callWithRetry(request) {
     if (!client) throw new Error('GEMINI_API_KEY não foi configurada.');
@@ -91,7 +110,7 @@ export function createGeminiService({
       contents,
       config: {
         maxOutputTokens: maxTokens || 2048,
-        systemInstruction: instructionFor(user, extraInstruction, { assistant: { ownerName, ...assistant }, now: now(), timeZone }),
+        systemInstruction: instructionFor(user, extraInstruction, { assistant: assistantFor(history, assistant, user), now: now(), timeZone }),
         tools: [{ functionDeclarations: toolDeclarations }]
       }
     };
@@ -134,7 +153,7 @@ export function createGeminiService({
       contents,
       config: {
         maxOutputTokens: maxTokens || 2048,
-        systemInstruction: instructionFor(user, extraInstruction, { assistant: { ownerName, ...assistant }, now: now(), timeZone }),
+        systemInstruction: instructionFor(user, extraInstruction, { assistant: assistantFor(history, assistant, user), now: now(), timeZone }),
         tools: [{ functionDeclarations: toolDeclarations }]
       }
     };

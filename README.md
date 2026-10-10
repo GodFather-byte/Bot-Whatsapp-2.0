@@ -142,6 +142,10 @@ Escreva na conversa **"Você"** (consigo mesmo) do WhatsApp, ou de um número de
 - `/admin bloquear <número>`, `/admin desbloquear <número>`, `/admin bloqueados` — números que o assistente ignora
 - `/admin aviso <texto>` — envia um recado para todos os contatos que já conversaram com o assistente, um a cada 2 segundos
 
+### Variedade nas respostas
+
+A IA não aprende sozinha entre conversas, então a variedade vem do prompt: a cada resposta o bot sorteia um jeito de falar (direto, irônico, caloroso, misterioso...) e recebe o começo das suas últimas respostas com a ordem de começar de outro jeito. Na persona padrão apenas; `/persona formal|técnico|engraçado` mantém o tom escolhido. Quando o criador escreve, o bot sempre o chama de "meu criador" (ou variações).
+
 ### Comandos do criador (`/criador`)
 
 Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bot é o do criador) usa estes comandos, **sempre em conversa privada**. Para qualquer outra pessoa, `/criador` é texto comum. O assistente também sabe que está falando com o criador.
