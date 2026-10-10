@@ -1,6 +1,7 @@
 import { extractMedia, UserFacingError } from './media.js';
 import { handleCommand } from './commands.js';
 import { handleAdminCommand } from './admin.js';
+import { handleCreatorCommand } from './creator.js';
 import { fetchLinkContent, findUrl } from '../services/links.js';
 import { createPresenceTracker } from '../services/presence.js';
 import { splitMessage, toWhatsAppFormat } from '../utils/format.js';
@@ -108,6 +109,7 @@ export function createMessageHandler({
   now = Date.now,
   ignoredNumbers = [],
   ownerNumbers = [],
+  creatorNumbers = [],
   timeZone = 'America/Sao_Paulo',
   debounceMs = 0,
   groupsEnabled = true,
@@ -121,6 +123,7 @@ export function createMessageHandler({
   // Pode ser um Set compartilhado que cresce quando cada número do bot conecta (número e LID).
   const ignored = ignoredNumbers instanceof Set ? ignoredNumbers : new Set(ignoredNumbers);
   const owners = new Set(ownerNumbers);
+  const creators = new Set(creatorNumbers);
   const seenIds = new Set();
   const botSentIds = new Set();
   const patchedSockets = new WeakSet();
@@ -191,7 +194,7 @@ export function createMessageHandler({
     }
   }
 
-  async function respond({ sock, remoteJid, isGroup, isOwner, msg, text, media, settings, senderNumbers = [] }) {
+  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, msg, text, media, settings, senderNumbers = [] }) {
     const user = await storage.getUser(remoteJid);
     const history = await storage.getHistory(remoteJid, 10);
 
@@ -210,7 +213,7 @@ export function createMessageHandler({
       parts,
       user,
       extraInstruction: settings.instrucoes,
-      assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner }
+      assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner, isCreator }
     });
     await storage.addMessage({ remoteJid, role: 'user', conteudo: userText, tipo: media?.type || 'texto' });
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
@@ -269,6 +272,17 @@ export function createMessageHandler({
     return true;
   }
 
+  // /admin (ordens de dono), /criador (só o criador, em conversa privada) e os comandos comuns.
+  function runCommand(text, { sock, remoteJid, isCreator = false }) {
+    const context = { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence };
+    const adminMatch = text.match(/^\/admin\b\s*([\s\S]*)$/i);
+    if (adminMatch) return handleAdminCommand(adminMatch[1], context);
+    const creatorMatch = text.match(/^\/criador\b\s*([\s\S]*)$/i);
+    // Fora de conversa privada ou para quem não é o criador, "/criador" não existe: segue como comando desconhecido/texto comum.
+    if (creatorMatch && isCreator && !remoteJid.endsWith('@g.us')) return handleCreatorCommand(creatorMatch[1], context);
+    return handleCommand(text, remoteJid, { storage, gemini, stats, timeZone });
+  }
+
   // Comandos escritos no próprio celular, na conversa "Você" (consigo mesmo). Quem tem acesso ao celular é o dono,
   // então isso funciona mesmo sem NUMERO_DONO. Texto comum nessa conversa é anotação do dono e não é respondido.
   async function handleSelfChat(sock, msg, remoteJid) {
@@ -277,10 +291,9 @@ export function createMessageHandler({
     const text = getText(unwrapMessage(msg.message)).trim();
     if (!text.startsWith('/') || !isFreshAndNew(msg, remoteJid)) return;
     try {
-      const adminMatch = text.match(/^\/admin\b\s*([\s\S]*)$/i);
-      const reply = adminMatch
-        ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence })
-        : await handleCommand(text, remoteJid, { storage, gemini, stats, timeZone });
+      // Na conversa "Você" quem escreve é quem tem o celular: é o criador se o número dele for um dos números do bot.
+      const isCreator = [...self].some((id) => creators.has(id));
+      const reply = await runCommand(text, { sock, remoteJid, isCreator });
       if (reply !== null) await sendCommandReply(sock, remoteJid, reply);
     } catch (error) {
       await reportFailure(sock, remoteJid, error);
@@ -324,7 +337,9 @@ export function createMessageHandler({
 
     await withPresence(sock, remoteJid, async () => {
       const senderNumbers = await resolveSenderNumbers(sock, senderJid, senderAlt, logger);
-      const isOwner = senderNumbers.some((number) => owners.has(number));
+      const isCreator = senderNumbers.some((number) => creators.has(number));
+      // O criador tem todas as ordens de dono, além dos comandos /criador.
+      const isOwner = isCreator || senderNumbers.some((number) => owners.has(number));
       if (!isOwner && await storage.isBlocked(senderNumbers)) return skip('número bloqueado', remoteJid);
 
       // Número fora da lista permitida: o assistente finge que não viu, sem avisar a pessoa.
@@ -359,17 +374,14 @@ export function createMessageHandler({
       // Comandos são do dono. Para os contatos, "/algo" é texto comum e o assistente conversa normalmente.
       const commandText = text || media?.text || '';
       if (isOwner && commandText.startsWith('/')) {
-        const adminMatch = commandText.match(/^\/admin\b\s*([\s\S]*)$/i);
-        const reply = adminMatch
-          ? await handleAdminCommand(adminMatch[1], { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence })
-          : await handleCommand(commandText, remoteJid, { storage, gemini, stats, timeZone });
+        const reply = await runCommand(commandText, { sock, remoteJid, isCreator });
         if (reply !== null) {
           await sendCommandReply(sock, remoteJid, reply);
           return;
         }
       }
 
-      const request = { sock, remoteJid, isGroup, isOwner, msg, text, media, settings, senderNumbers };
+      const request = { sock, remoteJid, isGroup, isOwner, isCreator, msg, text, media, settings, senderNumbers };
       if (debounceMs > 0 && !media) {
         queueText(`${remoteJid}|${senderJid}`, request);
         return;

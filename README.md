@@ -117,6 +117,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `PORT` / `LOG_LEVEL` | ⛔ Opcional | Porta HTTP (padrão `3000`) e nível dos logs. |
 | `DASHBOARD_ENABLED` | ⛔ Opcional | Habilita `/dashboard`; requer `DASHBOARD_AUTH_TOKEN`. |
 | `REMINDER_CHECK_INTERVAL` | ⛔ Opcional | Intervalo de verificação em milissegundos. |
+| `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
 | `SILENCIAR_APOS_RESPOSTA_MIN` | ⛔ Opcional | Minutos em que o assistente se cala numa conversa depois que você responde (padrão `60`). |
@@ -140,6 +141,17 @@ Escreva na conversa **"Você"** (consigo mesmo) do WhatsApp, ou de um número de
 - `/admin config` — configurações atuais
 - `/admin bloquear <número>`, `/admin desbloquear <número>`, `/admin bloqueados` — números que o assistente ignora
 - `/admin aviso <texto>` — envia um recado para todos os contatos que já conversaram com o assistente, um a cada 2 segundos
+
+### Comandos do criador (`/criador`)
+
+Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bot é o do criador) usa estes comandos, **sempre em conversa privada**. Para qualquer outra pessoa, `/criador` é texto comum. O assistente também sabe que está falando com o criador.
+
+- `/criador ping` — confirma que o bot está vivo e que reconheceu você
+- `/criador sistema` — tempo no ar, memória, versão do Node, MongoDB e números conectados
+- `/criador contatos` — quantos contatos já conversaram e as últimas mensagens
+- `/criador historico <número> [quantidade]` — últimas mensagens trocadas com o número (padrão 10, máximo 30)
+- `/criador limpar <número>` — apaga o histórico da conversa com o número
+- `/criador falar <número> <texto>` — o bot envia a mensagem para o número
 
 > ⚠️ Use `/admin aviso` com moderação: envios em massa são o principal motivo de banimento de números pelo WhatsApp.
 

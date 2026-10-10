@@ -92,6 +92,7 @@ bots = config.bots.map((bot) => {
       logger: botLogger,
       ignoredNumbers: botIdentities,
       ownerNumbers: config.ownerNumbers,
+      creatorNumbers: config.creatorNumbers,
       timeZone: config.timeZone,
       debounceMs: config.messageDebounceMs,
       groupsEnabled: config.groupsEnabled,
