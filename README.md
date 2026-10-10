@@ -26,8 +26,10 @@ O WhatsApp não avisa a um bot quando você está online, então o consigliere v
 | Modo | Comportamento |
 |---|---|
 | `auto` | Atende quando o chefe ficou **10 minutos** sem mandar mensagem (`AUSENTE_APOS_MIN`) ou dentro do *horário de ausência*. Se o chefe responder uma conversa, o consigliere **se cala nela por 1 hora** (`SILENCIAR_APOS_RESPOSTA_MIN`): chefe presente, consigliere de boca fechada. |
-| `on` (padrão) | "Hoje ninguém fala com o chefe." Responde sempre, a todos (viagem, reunião longa, noite). |
+| `on` (padrão) | "Hoje ninguém fala com o chefe." Responde a todos (viagem, reunião longa, noite), **menos nas conversas em que o chefe respondeu** (veja abaixo). |
 | `off` | "O consigliere tirou folga." Não responde ninguém. |
+
+**Humano na conversa, consigliere fora:** em qualquer modo (menos `off`, que já não responde), quando o chefe responde uma conversa pelo celular o consigliere **se cala nela por 1 hora** (`SILENCIAR_APOS_RESPOSTA_MIN`). Se ele ainda estava esperando para juntar mensagens, ou já tinha gerado a resposta quando o chefe escreveu, a resposta é descartada. As outras conversas seguem sendo atendidas. O bot não confunde as próprias mensagens com as do chefe.
 
 Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on` ou `/admin ausente off`.
 

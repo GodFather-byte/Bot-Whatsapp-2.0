@@ -173,3 +173,60 @@ test('contacts get a real conversation in a mafia tone, not just "I will tell th
   assert.match(prompt, /Nunca invente nada sobre Paulo/);
   assert.match(prompt, /nunca ameace/);
 });
+
+test('when a human answers a chat the assistant stops talking there, even in the default "on" mode', async () => {
+  const jid = '5531777777777@s.whatsapp.net';
+  const { handler, sock, from, prompts, sent } = setup({ handler: { creatorNumbers: [] } });
+  const human = (remoteJid, id) => handler(sock, { key: { remoteJid, fromMe: true, id }, message: { conversation: 'Oi, sou eu mesmo' } });
+
+  await from(jid, 'oi');
+  assert.equal(prompts.length, 1);
+
+  await human(jid, 'h1');
+  await from(jid, 'e aí?');
+  assert.equal(prompts.length, 1, 'depois que o humano respondeu, o bot se cala nessa conversa');
+
+  await from('5531888888888@s.whatsapp.net', 'oi');
+  assert.equal(prompts.length, 2, 'as outras conversas continuam sendo atendidas');
+  assert.ok(sent.length >= 2);
+});
+
+test('messages waiting to be answered are dropped when the human replies first', async () => {
+  const jid = '5531777777777@s.whatsapp.net';
+  const { handler, sock, from, prompts } = setup({ handler: { creatorNumbers: [], debounceMs: 30 } });
+
+  await from(jid, 'oi');
+  await handler(sock, { key: { remoteJid: jid, fromMe: true, id: 'h2' }, message: { conversation: 'Já te respondo' } });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(prompts.length, 0);
+});
+
+test('an answer generated while the human was replying is not sent', async () => {
+  const jid = '5531777777777@s.whatsapp.net';
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const sent = [];
+  const handler = createMessageHandler({
+    config: {},
+    storage: new MemoryStorage(),
+    gemini: { generate: async () => { await gate; return 'resposta tardia'; } },
+    allowlist: createAllowlist([]),
+    rateLimiter: new RateLimiter(),
+    stats: { totalMessages: 0, users: new Set(), errorEvents: [], rateLimitEvents: [], recentMessages: [] },
+    logger: { warn() {}, error() {}, debug() {}, info() {} },
+    creatorNumbers: [],
+    notifyOwner: false
+  });
+  const sock = {
+    user: BOT,
+    signalRepository: { lidMapping: { getPNForLID: async () => null } },
+    sendMessage: async (to, content) => sent.push({ to, text: content.text }),
+    sendPresenceUpdate: async () => {}
+  };
+
+  const pendingAnswer = handler(sock, { key: { remoteJid: jid }, message: { conversation: 'oi' } });
+  await handler(sock, { key: { remoteJid: jid, fromMe: true, id: 'h3' }, message: { conversation: 'Eu respondo' } });
+  release();
+  await pendingAnswer;
+  assert.deepEqual(sent, []);
+});
