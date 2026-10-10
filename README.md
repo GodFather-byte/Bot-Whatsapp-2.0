@@ -4,7 +4,7 @@
 >
 > ⚠️ **Aviso:** a máfia aqui é de **brincadeira**. Ninguém é ameaçado, nenhuma cabeça de cavalo é entregue. O máximo que acontece é um contato receber uma resposta educada de um robô.
 
-O **Bot PH Zeus** é o consigliere de confiança do chefe (você). Quando o **chefe não está online**, é ele quem atende a porta: se apresenta, anota o recado, resolve o que dá para resolver e depois **conta tudo ao chefe**. Por trás dos panos, usa o [Baileys](https://github.com/WhiskeySockets/Baileys) para se infiltrar no seu WhatsApp como "aparelho conectado" e o **Google Gemini** (`@google/genai`) como cérebro da operação. Trabalha 24/7 na nuvem (ex: [Render](https://render.com)), com a sessão guardada no **MongoDB** (o cofre da família) para sobreviver a reinícios.
+O **Bot PH Zeus** é o consigliere de confiança do chefe (você). Quando o **chefe não está online**, é ele quem atende a porta: se apresenta, conversa em tom mafioso, resolve o que dá para resolver, anota o recado quando há um e depois **conta tudo ao chefe**. Por trás dos panos, usa o [Baileys](https://github.com/WhiskeySockets/Baileys) para se infiltrar no seu WhatsApp como "aparelho conectado" e o **Google Gemini** (`@google/genai`) como cérebro da operação. Trabalha 24/7 na nuvem (ex: [Render](https://render.com)), com a sessão guardada no **MongoDB** (o cofre da família) para sobreviver a reinícios.
 
 ## 🏛️ A hierarquia da família
 

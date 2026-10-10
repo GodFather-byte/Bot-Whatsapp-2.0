@@ -164,3 +164,12 @@ test('every answer gets a different way of speaking and avoids the recent openin
   assert.match(first, /começaram assim: "Meu amigo, a família agradece o"/);
   assert.doesNotMatch(formal, /o jeito de falar é/);
 });
+
+test('contacts get a real conversation in a mafia tone, not just "I will tell the boss"', () => {
+  const prompt = buildAssistantPrompt({ ownerName: 'Paulo' });
+  assert.match(prompt, /Conversar de verdade/);
+  assert.match(prompt, /tom mafioso de filme/);
+  assert.match(prompt, /não repita isso em toda resposta/);
+  assert.match(prompt, /Nunca invente nada sobre Paulo/);
+  assert.match(prompt, /nunca ameace/);
+});
