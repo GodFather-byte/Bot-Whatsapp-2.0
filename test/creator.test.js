@@ -230,3 +230,60 @@ test('an answer generated while the human was replying is not sent', async () =>
   await pendingAnswer;
   assert.deepEqual(sent, []);
 });
+
+test('/criador silencio quiets the bot for the contacts while the creator keeps talking to it', async () => {
+  let now = new Date('2026-10-01T13:00:00Z').getTime();
+  const { from, sent, prompts } = setup({ handler: { now: () => now } });
+  const creatorJid = `${CREATOR}@s.whatsapp.net`;
+  const ana = '5531777777777@s.whatsapp.net';
+  const bia = '5531888888888@s.whatsapp.net';
+
+  await from(creatorJid, '/criador silencio por 2 minutos');
+  assert.match(sent.at(-1).text, /Bico calado com todos os contatos até/);
+
+  await from(ana, 'oi');
+  await from(bia, 'oi');
+  assert.equal(prompts.length, 0, 'os contatos não são respondidos');
+
+  await from(creatorJid, 'e aí, tudo certo?');
+  assert.equal(prompts.length, 1, 'com o criador o bot fala à vontade');
+  assert.equal(prompts[0].assistant.isCreator, true);
+
+  now += 3 * 60_000;
+  await from(ana, 'voltou?');
+  assert.equal(prompts.length, 2, 'passados 2 minutos o silêncio acaba');
+});
+
+test('/criador silencio can target one chat, be cancelled and rejects nonsense', async () => {
+  const { from, sent, prompts } = setup();
+  const creatorJid = `${CREATOR}@s.whatsapp.net`;
+  const ana = '5531777777777@s.whatsapp.net';
+  const bia = '5531888888888@s.whatsapp.net';
+
+  await from(creatorJid, '/criador silencio 5531777777777 10 min');
+  assert.match(sent.at(-1).text, /na conversa com 5531777777777/);
+  await from(ana, 'oi');
+  await from(bia, 'oi');
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0].text, /oi/);
+
+  await from(creatorJid, '/criador silencio cancelar');
+  assert.match(sent.at(-1).text, /Silêncio cancelado/);
+  await from(creatorJid, '/criador silencio cancelar');
+  assert.match(sent.at(-1).text, /não estava em silêncio/);
+
+  await from(creatorJid, '/criador silencio 5531777777777 10 min');
+  await from(creatorJid, '/criador silencio cancelar');
+  await from(ana, 'agora sim');
+  assert.equal(prompts.length, 2);
+
+  await from(creatorJid, '/criador silencio amanhã');
+  assert.match(sent.at(-1).text, /Use: \/criador silencio/);
+  await from(creatorJid, '/criador silencio 90 horas');
+  assert.match(sent.at(-1).text, /até/);
+});
+
+test('the default time the bot stays quiet after a human answers is 5 minutes', () => {
+  assert.equal(loadConfig({}).presence.takeoverMinutes, 5);
+  assert.equal(loadConfig({ SILENCIAR_APOS_RESPOSTA_MIN: '15' }).presence.takeoverMinutes, 15);
+});

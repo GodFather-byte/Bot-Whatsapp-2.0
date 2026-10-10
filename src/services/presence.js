@@ -13,7 +13,7 @@ export const AWAY_MODES = ['auto', 'on', 'off'];
 // O WhatsApp não avisa quando o dono "está online", então a atividade é medida pelas mensagens que ele envia do celular.
 export function createPresenceTracker({
   idleMinutes = 10,
-  takeoverMinutes = 60,
+  takeoverMinutes = 5,
   timeZone = 'America/Sao_Paulo',
   now = Date.now
 } = {}) {
@@ -28,6 +28,31 @@ export function createPresenceTracker({
     if (lastByChat.size > 1000) lastByChat.delete(lastByChat.keys().next().value);
   }
 
+  // Silêncio pedido pelo criador (/criador silencio): geral ou de uma conversa, até um horário.
+  let silencedAll = 0;
+  const silencedChats = new Map();
+
+  function silence({ chatJid, minutes }) {
+    const until = now() + minutes * MINUTE;
+    if (chatJid) silencedChats.set(chatJid, until);
+    else silencedAll = until;
+    return until;
+  }
+
+  function clearSilence(chatJid) {
+    const had = chatJid ? silencedChats.delete(chatJid) : silencedAll > now() || silencedChats.size > 0;
+    if (!chatJid) {
+      silencedAll = 0;
+      silencedChats.clear();
+    }
+    return had;
+  }
+
+  function silencedUntil(chatJid) {
+    const until = Math.max(silencedAll, silencedChats.get(chatJid) ?? 0);
+    return until > now() ? until : null;
+  }
+
   // O dono respondeu nessa conversa há pouco: um humano assumiu e o assistente deve ficar quieto.
   function isTakenOver(chatJid) {
     const lastInChat = lastByChat.get(chatJid);
@@ -35,7 +60,7 @@ export function createPresenceTracker({
   }
 
   function isAway({ mode = 'auto', schedule, chatJid } = {}) {
-    if (mode === 'off' || isTakenOver(chatJid)) return false;
+    if (mode === 'off' || silencedUntil(chatJid) || isTakenOver(chatJid)) return false;
     if (mode === 'on') return true;
     if (schedule) {
       try {
@@ -49,5 +74,5 @@ export function createPresenceTracker({
 
   const lastOwnerActivityIn = (chatJid) => lastByChat.get(chatJid) ?? 0;
 
-  return { recordOwnerActivity, lastOwnerActivityIn, isTakenOver, isAway, idleMinutes, takeoverMinutes };
+  return { silence, clearSilence, silencedUntil, recordOwnerActivity, lastOwnerActivityIn, isTakenOver, isAway, idleMinutes, takeoverMinutes };
 }
