@@ -101,7 +101,7 @@ export function loadConfig(env = process.env) {
     ownerName: (env.NOME_DONO || '').trim(),
     presence: {
       idleMinutes: positiveInteger(env.AUSENTE_APOS_MIN, 10, 'AUSENTE_APOS_MIN'),
-      takeoverMinutes: positiveInteger(env.SILENCIAR_APOS_RESPOSTA_MIN, 60, 'SILENCIAR_APOS_RESPOSTA_MIN')
+      takeoverMinutes: positiveInteger(env.SILENCIAR_APOS_RESPOSTA_MIN, 5, 'SILENCIAR_APOS_RESPOSTA_MIN')
     },
     notifyOwner: parseBoolean(env.AVISAR_DONO, true),
     toolApiKeys: {

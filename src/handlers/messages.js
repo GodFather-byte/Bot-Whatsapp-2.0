@@ -194,7 +194,7 @@ export function createMessageHandler({
     }
   }
 
-  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, msg, text, media, settings, senderNumbers = [] }) {
+  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, receivedAt = 0, msg, text, media, settings, senderNumbers = [] }) {
     const user = await storage.getUser(remoteJid);
     const history = await storage.getHistory(remoteJid, 10);
 
@@ -216,6 +216,11 @@ export function createMessageHandler({
       assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner, isCreator }
     });
     await storage.addMessage({ remoteJid, role: 'user', conteudo: userText, tipo: media?.type || 'texto' });
+    // O dono respondeu enquanto a IA pensava: um humano assumiu a conversa, então a resposta do assistente não é enviada.
+    if (!isOwner && (presence.lastOwnerActivityIn?.(remoteJid) ?? 0) >= receivedAt) {
+      logger.info?.({ motivo: 'humano respondeu durante a geração', de: remoteJid }, 'Mensagem não respondida');
+      return;
+    }
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
 
     await send(sock, remoteJid, answer, isGroup ? msg : undefined);
@@ -256,6 +261,16 @@ export function createMessageHandler({
     }, debounceMs);
     entry.timer.unref?.();
     pending.set(key, entry);
+  }
+
+  // O dono respondeu na conversa: descarta as mensagens que ainda esperavam para serem respondidas pelo assistente.
+  function cancelPending(remoteJid) {
+    for (const [key, entry] of pending) {
+      if (!key.startsWith(`${remoteJid}|`)) continue;
+      clearTimeout(entry.timer);
+      pending.delete(key);
+      skip('humano respondeu antes do assistente', remoteJid);
+    }
   }
 
   // Ignora mensagens antigas (acumuladas com o bot desligado) e repetidas (o WhatsApp pode reentregar).
@@ -305,6 +320,7 @@ export function createMessageHandler({
 
   return async function handleMessage(sock, msg) {
     if (!msg?.message) return;
+    const receivedAt = now();
     const remoteJid = msg.key?.remoteJid;
     // Status, listas de transmissão e canais (newsletters) não são conversas: o bot nunca responde a eles.
     if (!remoteJid || remoteJid === 'status@broadcast' || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@newsletter')) return;
@@ -316,7 +332,10 @@ export function createMessageHandler({
       if (msg.key.id && botSentIds.has(msg.key.id)) return;
       const self = new Set([jidUser(sock.user?.id), jidUser(sock.user?.lid)].filter(Boolean));
       const isSelfChat = self.has(jidUser(remoteJid));
-      if (isFreshAndNew(msg, remoteJid, { markSeen: false })) presence.recordOwnerActivity(isSelfChat ? null : remoteJid);
+      if (isFreshAndNew(msg, remoteJid, { markSeen: false })) {
+        presence.recordOwnerActivity(isSelfChat ? null : remoteJid);
+        if (!isSelfChat) cancelPending(remoteJid);
+      }
       await handleSelfChat(sock, msg, remoteJid);
       return;
     }
@@ -381,7 +400,7 @@ export function createMessageHandler({
         }
       }
 
-      const request = { sock, remoteJid, isGroup, isOwner, isCreator, msg, text, media, settings, senderNumbers };
+      const request = { sock, remoteJid, isGroup, isOwner, isCreator, receivedAt, msg, text, media, settings, senderNumbers };
       if (debounceMs > 0 && !media) {
         queueText(`${remoteJid}|${senderJid}`, request);
         return;

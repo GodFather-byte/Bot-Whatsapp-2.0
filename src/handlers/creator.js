@@ -9,6 +9,7 @@ const creatorHelp = [
   '/criador historico <número> [quantidade] — últimas mensagens trocadas com esse número (padrão 10)',
   '/criador limpar <número> — apaga o histórico da conversa com esse número',
   '/criador falar <número> <texto> — o bot envia a mensagem para esse número',
+  '/criador silencio [número] <tempo> — o bot para de responder aos contatos (ex.: 2 minutos, 30 min, 1 hora); com número, só essa conversa; "cancelar" volta ao normal. Com você ele continua falando',
   '/admin ajuda — o criador também tem todas as ordens de dono'
 ].join('\n');
 
@@ -29,6 +30,18 @@ async function findChatJid(storage, number) {
   return contacts.find((jid) => jidNumber(jid) === number) || `${number}@s.whatsapp.net`;
 }
 
+const MAX_SILENCE_MINUTES = 24 * 60;
+
+// "2 minutos", "2min", "30 s", "1 hora", "por 5": sem unidade são minutos. Devolve minutos (podem ser fração) ou null.
+function parseDuration(text = '') {
+  const match = text.trim().toLowerCase().replace(/^por\s+/, '').match(/^(\d+(?:[.,]\d+)?)\s*(segundos?|seg|s|minutos?|min|m|horas?|h)?$/);
+  if (!match) return null;
+  const amount = Number(match[1].replace(',', '.'));
+  const unit = match[2] || 'min';
+  const minutes = unit.startsWith('s') ? amount / 60 : unit.startsWith('h') ? amount * 60 : amount;
+  return minutes > 0 ? Math.min(minutes, MAX_SILENCE_MINUTES) : null;
+}
+
 function parseNumber(value) {
   const number = normalizePhoneNumber(value || '');
   return number.length >= 10 && number.length <= 15 ? number : null;
@@ -42,7 +55,8 @@ export async function handleCreatorCommand(argument, {
   timeZone = 'America/Sao_Paulo',
   uptimeSeconds = () => process.uptime(),
   memoryUsage = () => process.memoryUsage(),
-  nodeVersion = process.version
+  nodeVersion = process.version,
+  presence
 }) {
   const [, subcommand = '', rest = ''] = argument.match(/^(\S*)\s*([\s\S]*)$/) || [];
   const value = rest.trim();
@@ -96,6 +110,22 @@ export async function handleCreatorCommand(argument, {
       if (!number || !text.trim()) return 'Use: /criador falar 5511999999999 <texto>';
       await sock.sendMessage(`${number}@s.whatsapp.net`, { text: text.trim() });
       return `Mensagem enviada para ${number}.`;
+    }
+    case 'silencio':
+    case 'silêncio': {
+      if (!presence?.silence) return 'O controle de silêncio não está disponível.';
+      const usage = 'Use: /criador silencio 2 minutos | /criador silencio 5511999999999 10 min | /criador silencio cancelar';
+      const [first = '', ...others] = value.split(/\s+/);
+      const target = parseNumber(first);
+      const chatJid = target ? await findChatJid(storage, target) : undefined;
+      const argumentText = target ? others.join(' ') : value;
+      if (['cancelar', 'desligar', 'voltar', 'off'].includes(argumentText.toLowerCase())) {
+        return presence.clearSilence(chatJid) ? 'Silêncio cancelado: o bot voltou a responder.' : 'O bot não estava em silêncio.';
+      }
+      const minutes = parseDuration(argumentText);
+      if (!minutes) return usage;
+      const until = presence.silence({ chatJid, minutes });
+      return `Bico calado ${target ? `na conversa com ${target}` : 'com todos os contatos'} até ${formatDateTime(new Date(until), timeZone)}. Com você eu continuo falando. Para encerrar antes: /criador silencio cancelar`;
     }
     default:
       return `Comando de criador desconhecido.\n\n${creatorHelp}`;

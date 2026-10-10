@@ -173,3 +173,117 @@ test('contacts get a real conversation in a mafia tone, not just "I will tell th
   assert.match(prompt, /Nunca invente nada sobre Paulo/);
   assert.match(prompt, /nunca ameace/);
 });
+
+test('when a human answers a chat the assistant stops talking there, even in the default "on" mode', async () => {
+  const jid = '5531777777777@s.whatsapp.net';
+  const { handler, sock, from, prompts, sent } = setup({ handler: { creatorNumbers: [] } });
+  const human = (remoteJid, id) => handler(sock, { key: { remoteJid, fromMe: true, id }, message: { conversation: 'Oi, sou eu mesmo' } });
+
+  await from(jid, 'oi');
+  assert.equal(prompts.length, 1);
+
+  await human(jid, 'h1');
+  await from(jid, 'e aí?');
+  assert.equal(prompts.length, 1, 'depois que o humano respondeu, o bot se cala nessa conversa');
+
+  await from('5531888888888@s.whatsapp.net', 'oi');
+  assert.equal(prompts.length, 2, 'as outras conversas continuam sendo atendidas');
+  assert.ok(sent.length >= 2);
+});
+
+test('messages waiting to be answered are dropped when the human replies first', async () => {
+  const jid = '5531777777777@s.whatsapp.net';
+  const { handler, sock, from, prompts } = setup({ handler: { creatorNumbers: [], debounceMs: 30 } });
+
+  await from(jid, 'oi');
+  await handler(sock, { key: { remoteJid: jid, fromMe: true, id: 'h2' }, message: { conversation: 'Já te respondo' } });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(prompts.length, 0);
+});
+
+test('an answer generated while the human was replying is not sent', async () => {
+  const jid = '5531777777777@s.whatsapp.net';
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const sent = [];
+  const handler = createMessageHandler({
+    config: {},
+    storage: new MemoryStorage(),
+    gemini: { generate: async () => { await gate; return 'resposta tardia'; } },
+    allowlist: createAllowlist([]),
+    rateLimiter: new RateLimiter(),
+    stats: { totalMessages: 0, users: new Set(), errorEvents: [], rateLimitEvents: [], recentMessages: [] },
+    logger: { warn() {}, error() {}, debug() {}, info() {} },
+    creatorNumbers: [],
+    notifyOwner: false
+  });
+  const sock = {
+    user: BOT,
+    signalRepository: { lidMapping: { getPNForLID: async () => null } },
+    sendMessage: async (to, content) => sent.push({ to, text: content.text }),
+    sendPresenceUpdate: async () => {}
+  };
+
+  const pendingAnswer = handler(sock, { key: { remoteJid: jid }, message: { conversation: 'oi' } });
+  await handler(sock, { key: { remoteJid: jid, fromMe: true, id: 'h3' }, message: { conversation: 'Eu respondo' } });
+  release();
+  await pendingAnswer;
+  assert.deepEqual(sent, []);
+});
+
+test('/criador silencio quiets the bot for the contacts while the creator keeps talking to it', async () => {
+  let now = new Date('2026-10-01T13:00:00Z').getTime();
+  const { from, sent, prompts } = setup({ handler: { now: () => now } });
+  const creatorJid = `${CREATOR}@s.whatsapp.net`;
+  const ana = '5531777777777@s.whatsapp.net';
+  const bia = '5531888888888@s.whatsapp.net';
+
+  await from(creatorJid, '/criador silencio por 2 minutos');
+  assert.match(sent.at(-1).text, /Bico calado com todos os contatos até/);
+
+  await from(ana, 'oi');
+  await from(bia, 'oi');
+  assert.equal(prompts.length, 0, 'os contatos não são respondidos');
+
+  await from(creatorJid, 'e aí, tudo certo?');
+  assert.equal(prompts.length, 1, 'com o criador o bot fala à vontade');
+  assert.equal(prompts[0].assistant.isCreator, true);
+
+  now += 3 * 60_000;
+  await from(ana, 'voltou?');
+  assert.equal(prompts.length, 2, 'passados 2 minutos o silêncio acaba');
+});
+
+test('/criador silencio can target one chat, be cancelled and rejects nonsense', async () => {
+  const { from, sent, prompts } = setup();
+  const creatorJid = `${CREATOR}@s.whatsapp.net`;
+  const ana = '5531777777777@s.whatsapp.net';
+  const bia = '5531888888888@s.whatsapp.net';
+
+  await from(creatorJid, '/criador silencio 5531777777777 10 min');
+  assert.match(sent.at(-1).text, /na conversa com 5531777777777/);
+  await from(ana, 'oi');
+  await from(bia, 'oi');
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0].text, /oi/);
+
+  await from(creatorJid, '/criador silencio cancelar');
+  assert.match(sent.at(-1).text, /Silêncio cancelado/);
+  await from(creatorJid, '/criador silencio cancelar');
+  assert.match(sent.at(-1).text, /não estava em silêncio/);
+
+  await from(creatorJid, '/criador silencio 5531777777777 10 min');
+  await from(creatorJid, '/criador silencio cancelar');
+  await from(ana, 'agora sim');
+  assert.equal(prompts.length, 2);
+
+  await from(creatorJid, '/criador silencio amanhã');
+  assert.match(sent.at(-1).text, /Use: \/criador silencio/);
+  await from(creatorJid, '/criador silencio 90 horas');
+  assert.match(sent.at(-1).text, /até/);
+});
+
+test('the default time the bot stays quiet after a human answers is 5 minutes', () => {
+  assert.equal(loadConfig({}).presence.takeoverMinutes, 5);
+  assert.equal(loadConfig({ SILENCIAR_APOS_RESPOSTA_MIN: '15' }).presence.takeoverMinutes, 15);
+});

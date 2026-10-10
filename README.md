@@ -25,9 +25,11 @@ O WhatsApp não avisa a um bot quando você está online, então o consigliere v
 
 | Modo | Comportamento |
 |---|---|
-| `auto` | Atende quando o chefe ficou **10 minutos** sem mandar mensagem (`AUSENTE_APOS_MIN`) ou dentro do *horário de ausência*. Se o chefe responder uma conversa, o consigliere **se cala nela por 1 hora** (`SILENCIAR_APOS_RESPOSTA_MIN`): chefe presente, consigliere de boca fechada. |
-| `on` (padrão) | "Hoje ninguém fala com o chefe." Responde sempre, a todos (viagem, reunião longa, noite). |
+| `auto` | Atende quando o chefe ficou **10 minutos** sem mandar mensagem (`AUSENTE_APOS_MIN`) ou dentro do *horário de ausência*. Se o chefe responder uma conversa, o consigliere **se cala nela por 5 minutos** (`SILENCIAR_APOS_RESPOSTA_MIN`): chefe presente, consigliere de boca fechada. |
+| `on` (padrão) | "Hoje ninguém fala com o chefe." Responde a todos (viagem, reunião longa, noite), **menos nas conversas em que o chefe respondeu** (veja abaixo). |
 | `off` | "O consigliere tirou folga." Não responde ninguém. |
+
+**Humano na conversa, consigliere fora:** em qualquer modo (menos `off`, que já não responde), quando o chefe responde uma conversa pelo celular o consigliere **se cala nela por 5 minutos** (`SILENCIAR_APOS_RESPOSTA_MIN`). Se ele ainda estava esperando para juntar mensagens, ou já tinha gerado a resposta quando o chefe escreveu, a resposta é descartada. As outras conversas seguem sendo atendidas. O bot não confunde as próprias mensagens com as do chefe.
 
 Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on` ou `/admin ausente off`.
 
@@ -120,7 +122,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
-| `SILENCIAR_APOS_RESPOSTA_MIN` | ⛔ Opcional | Minutos em que o assistente se cala numa conversa depois que você responde (padrão `60`). |
+| `SILENCIAR_APOS_RESPOSTA_MIN` | ⛔ Opcional | Minutos em que o assistente se cala numa conversa depois que você responde (padrão `5`). |
 | `AVISAR_DONO` | ⛔ Opcional | `false` desliga o aviso na conversa "Você" quando o assistente atende uma conversa nova (padrão `true`). |
 | `TOOL_WEATHER_API_KEY`, `TOOL_NEWS_API_KEY`, `TOOL_EXCHANGE_RATE_API_KEY` | ⛔ Opcional | Chaves de clima, notícias e conversão de moedas. |
 

@@ -64,6 +64,11 @@ test('presence: the owner counts as online while typing, and the assistant steps
 
   assert.equal(tracker.isAway({ mode: 'off', chatJid: chat }), false);
   tracker.recordOwnerActivity(chat);
+  assert.equal(tracker.isAway({ mode: 'on', chatJid: chat }), false, 'um humano respondeu aqui: o assistente sai, mesmo no modo on');
+  assert.equal(tracker.isAway({ mode: 'on', chatJid: 'b@s.whatsapp.net' }), true);
+  assert.equal(tracker.isTakenOver(chat), true);
+  now += 61 * 60_000;
+  assert.equal(tracker.isTakenOver(chat), false);
   assert.equal(tracker.isAway({ mode: 'on', chatJid: chat }), true);
 });
 
