@@ -5,7 +5,7 @@ import { handleCreatorCommand } from './creator.js';
 import { fetchLinkContent, findUrl } from '../services/links.js';
 import { createPresenceTracker } from '../services/presence.js';
 import { splitMessage, toWhatsAppFormat } from '../utils/format.js';
-import { asksForPix, findVip, mergeVips, pixFooter } from '../assistant/extras.js';
+import { asksForPix, findVip, isPatroa, mergeVips, pixFooter, resolvePatroa } from '../assistant/extras.js';
 
 const PIX_OFF = 'desligado';
 const rateLimitedMessage = 'Você está enviando muitas mensagens. Aguarde um pouco.';
@@ -197,7 +197,7 @@ export function createMessageHandler({
     }
   }
 
-  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, receivedAt = 0, msg, text, media, settings, senderNumbers = [] }) {
+  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, patroa = null, receivedAt = 0, msg, text, media, settings, senderNumbers = [] }) {
     const user = await storage.getUser(remoteJid);
     const history = await storage.getHistory(remoteJid, 10);
 
@@ -223,7 +223,16 @@ export function createMessageHandler({
       parts,
       user,
       extraInstruction: extraInstruction || undefined,
-      assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner, isCreator, vip: vip?.description, pixNotice: showPix }
+      assistant: {
+        firstContact,
+        contactName: msg.pushName,
+        isGroup,
+        withOwner: isOwner,
+        isCreator,
+        vip: vip?.description,
+        patroa: patroa ? `${patroa.name}, esposa do chefe` : undefined,
+        pixNotice: showPix
+      }
     });
     await storage.addMessage({ remoteJid, role: 'user', conteudo: userText, tipo: media?.type || 'texto' });
     // O dono respondeu enquanto a IA pensava: um humano assumiu a conversa, então a resposta do assistente não é enviada.
@@ -234,6 +243,7 @@ export function createMessageHandler({
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
 
     await send(sock, remoteJid, pixFooterText ? `${answer}\n\n${pixFooterText}` : answer, isGroup ? msg : undefined);
+    if (patroa) await storage.updateUser(remoteJid, { patroaRespondeuEm: new Date(now()).toISOString() });
     if (firstContact && notifyOwner && !isGroup) await notifyOwners(sock, remoteJid, msg, senderNumbers, userText, answer);
     stats.recentMessages.unshift({
       de: remoteJid,
@@ -299,7 +309,7 @@ export function createMessageHandler({
 
   // /admin (ordens de dono), /criador (só o criador, em conversa privada) e os comandos comuns.
   function runCommand(text, { sock, remoteJid, isCreator = false }) {
-    const context = { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence, config };
+    const context = { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence, config, gemini };
     const adminMatch = text.match(/^\/admin\b\s*([\s\S]*)$/i);
     if (adminMatch) return handleAdminCommand(adminMatch[1], context);
     // "/pode falar meu filho": só o criador libera o bot para falar de novo na conversa dele depois de um /criador silencio.
@@ -384,6 +394,17 @@ export function createMessageHandler({
       // Por padrão o assistente responde a todos (modo "on"); "auto" e "off" continuam disponíveis com /admin ausente.
       if (!isOwner && !presence.isAway({ mode: settings.ausencia || 'on', schedule: settings.ausenciaHorario, chatJid: remoteJid })) return skip(`dono ativo ou modo ausente desligado (modo: ${settings.ausencia || 'on'})`, remoteJid);
 
+      // A patroa (esposa do dono) só recebe resposta na primeira mensagem; depois o assistente se cala até passar o tempo de espera.
+      const patroa = isOwner ? null : resolvePatroa(config?.patroa, settings.patroa);
+      const patroaContact = isPatroa(patroa, senderNumbers) ? patroa : null;
+      if (patroaContact) {
+        const answeredAt = (await storage.getUser(remoteJid)).patroaRespondeuEm;
+        const waitMs = patroaContact.cooldownHours * 3_600_000;
+        if (answeredAt && now() - new Date(answeredAt).getTime() < waitMs) {
+          return skip(`patroa já foi atendida; só volta a ser respondida após ${patroaContact.cooldownHours}h`, remoteJid);
+        }
+      }
+
       if (!isOwner) {
         const rate = rateLimiter.consume(senderJid);
         if (!rate.allowed) {
@@ -416,10 +437,10 @@ export function createMessageHandler({
         }
       }
 
-      // Depois de /criador silencio o bot também se cala com o criador, até ele mandar "/pode falar meu filho".
-      if (isCreator && presence.silencedUntil?.(remoteJid)) return skip('criador pediu silêncio (/criador silencio)', remoteJid);
+      // O criador só ganha resposta quando usa um comando: texto comum dele é ignorado.
+      if (isCreator) return skip('criador só recebe resposta a comandos (/criador ajuda)', remoteJid);
 
-      const request = { sock, remoteJid, isGroup, isOwner, isCreator, receivedAt, msg, text, media, settings, senderNumbers };
+      const request = { sock, remoteJid, isGroup, isOwner, isCreator, patroa: patroaContact, receivedAt, msg, text, media, settings, senderNumbers };
       if (debounceMs > 0 && !media) {
         queueText(`${remoteJid}|${senderJid}`, request);
         return;

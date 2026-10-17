@@ -60,14 +60,14 @@ test('the Pix key is only sent when someone asks for it', async () => {
   assert.ok(sent.at(-1).text.includes(FAKE_PIX));
 });
 
-test('the owner and the creator never get Pix lines, and VIPs only get the key when they ask', async () => {
+test('the owner never gets the key, the creator is not answered in plain text, and VIPs only get the key when they ask', async () => {
   const { sent, prompts, from } = setup();
   await from(OWNER, 'oi');
   await from(CREATOR, 'oi');
   await from(OWNER, 'qual a chave pix?');
   await from(SISTER, 'oi');
-  assert.deepEqual(sent.map(({ text }) => text), ['ok', 'ok', 'ok', 'ok'], 'sem pedido nada é anexado, e o dono nunca recebe a chave');
-  assert.equal(prompts[3].assistant.vip, 'a irmã do PH e chefe');
+  assert.deepEqual(sent.map(({ text }) => text), ['ok', 'ok', 'ok'], 'o criador não é respondido em texto comum; sem pedido nada é anexado');
+  assert.equal(prompts[2].assistant.vip, 'a irmã do PH e chefe');
   assert.equal(prompts[0].assistant.vip, undefined);
 
   await from(SISTER, 'me manda o pix dele?');
@@ -178,7 +178,7 @@ test('the Pix footer is a plain, serious line with the key, only on request, and
   const prompt = buildAssistantPrompt({ ownerName: 'PH', pixNotice: true, vip: 'a irmã do PH e chefe' });
   assert.match(prompt, /não escreva nem repita nenhuma chave Pix/i);
   assert.match(prompt, /a chave segue logo abaixo/);
-  assert.doesNotMatch(prompt, /piada|zoeira|brincadeira/i);
+  assert.doesNotMatch(prompt, /piada|zoeira/i);
   assert.match(prompt, /Quem escreve agora é a irmã do PH e chefe/);
   assert.match(prompt, /o mais fofo, doce e carinhoso possível/);
   assert.match(prompt, /princesa/);

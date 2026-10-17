@@ -94,7 +94,15 @@ export function loadConfig(env = process.env) {
     // O criador do bot tem comandos próprios (/criador) e o assistente sabe quem ele é. Configure NUMERO_CRIADOR para trocar.
     creatorNumbers: parseAllowedNumbers(env.NUMERO_CRIADOR ?? DEFAULT_CREATOR_NUMBER, 'NUMERO_CRIADOR'),
     // Chave Pix do criador, enviada só quando alguém pede. Também pode ser trocada com /criador pix.
-    pixKey: (env.PIX_CHAVE || '').trim(),    // Contatos que o assistente reconhece e trata com respeito, como a irmã do dono. Também gerenciados com /criador vip.
+    pixKey: (env.PIX_CHAVE || '').trim(),    // A patroa (esposa do dono): só recebe resposta na primeira mensagem e fica em silêncio pelo tempo de espera. Também com /criador patroa.
+    patroa: env.NUMERO_PATROA
+      ? {
+        number: parseAllowedNumbers(env.NUMERO_PATROA, 'NUMERO_PATROA')[0],
+        name: (env.NOME_PATROA || '').trim(),
+        cooldownHours: positiveInteger(env.PATROA_ESPERA_HORAS, 5, 'PATROA_ESPERA_HORAS')
+      }
+      : null,
+    // Contatos que o assistente reconhece e trata com respeito, como a irmã do dono. Também gerenciados com /criador vip.
     vipContacts: parseVipContacts(env.CONTATOS_VIP),
     timeZone: parseTimeZone(env.FUSO_HORARIO),
     messageDebounceMs: nonNegativeInteger(env.JUNTAR_MENSAGENS_MS, 2500, 'JUNTAR_MENSAGENS_MS'),

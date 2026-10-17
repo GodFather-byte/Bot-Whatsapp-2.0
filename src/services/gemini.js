@@ -65,7 +65,7 @@ function instructionFor(user, extraInstruction, { assistant, now, timeZone }) {
 
 export function createGeminiService({
   apiKey,
-  model,
+  model: initialModel,
   imageModel = 'gemini-2.5-flash-image',
   maxTokens,
   timeoutMs,
@@ -78,6 +78,8 @@ export function createGeminiService({
   random = Math.random
 } = {}) {
   const client = ai || (apiKey ? new GoogleGenAI({ apiKey }) : null);
+  // O criador pode trocar o modelo com o bot no ar (/criador modelo); vale até reiniciar.
+  let model = initialModel;
 
   // Cada resposta recebe um jeito de falar sorteado e a lista de aberturas recentes a evitar.
   // O jeito sorteado é de consigliere: só vale na persona padrão, para não brigar com /persona formal, técnico etc.
@@ -229,5 +231,11 @@ export function createGeminiService({
     return { buffer: Buffer.from(image.inlineData.data, 'base64'), mimetype: image.inlineData.mimeType || 'image/png', text };
   }
 
-  return { generate, stream, generateImage };
+  return {
+    generate,
+    stream,
+    generateImage,
+    getModel: () => model,
+    setModel: (name) => { model = name; }
+  };
 }

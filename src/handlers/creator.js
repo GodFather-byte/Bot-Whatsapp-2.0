@@ -1,5 +1,6 @@
 import { normalizePhoneNumber } from '../middleware/security.js';
 import { formatDateTime } from '../utils/time.js';
+import { resolvePatroa } from '../assistant/extras.js';
 
 const creatorHelp = [
   'Comandos do criador (só funcionam em conversa privada):',
@@ -15,6 +16,10 @@ const creatorHelp = [
   '/criador vips — lista os contatos reconhecidos; /criador vip remover <número> tira um',
   '/criador tom <texto> | limpar — muda o jeito de falar do bot com todos (ex.: bem debochado, ou só em rimas)',
   '/criador ficha <número> — resumo do contato: mensagens trocadas, última conversa, se é VIP ou está bloqueado',
+  '/criador patroa [número nome] | espera <horas> | remover — a esposa do PH: só é respondida na primeira mensagem e depois fica em silêncio pelo tempo de espera (padrão 5 h)',
+  '/criador config — painel com tudo que está configurado (modo, Pix, VIPs, patroa, tom, silêncio, modelo)',
+  '/criador ligar | desligar — liga o bot para todos (modo on) ou desliga de vez (modo off)',
+  '/criador modelo [nome] — mostra ou troca o modelo do Gemini com o bot no ar (vale até reiniciar)',
   '/criador reiniciar — reinicia o bot (o Render o sobe de novo em segundos)',
   '/admin ajuda — o criador também tem todas as ordens de dono'
 ].join('\n');
@@ -31,7 +36,7 @@ function formatDuration(totalSeconds) {
 }
 
 // Acha a conversa do número entre os contatos conhecidos (o WhatsApp pode usar JID de telefone ou LID).
-async function findChatJid(storage, number) {
+export async function findChatJid(storage, number) {
   const contacts = await storage.listContacts();
   return contacts.find((jid) => jidNumber(jid) === number) || `${number}@s.whatsapp.net`;
 }
@@ -39,7 +44,7 @@ async function findChatJid(storage, number) {
 const MAX_SILENCE_MINUTES = 24 * 60;
 
 // "2 minutos", "2min", "30 s", "1 hora", "por 5": sem unidade são minutos. Devolve minutos (podem ser fração) ou null.
-function parseDuration(text = '') {
+export function parseDuration(text = '') {
   const match = text.trim().toLowerCase().replace(/^por\s+/, '').match(/^(\d+(?:[.,]\d+)?)\s*(segundos?|seg|s|minutos?|min|m|horas?|h)?$/);
   if (!match) return null;
   const amount = Number(match[1].replace(',', '.'));
@@ -48,7 +53,7 @@ function parseDuration(text = '') {
   return minutes > 0 ? Math.min(minutes, MAX_SILENCE_MINUTES) : null;
 }
 
-function parseNumber(value) {
+export function parseNumber(value) {
   const number = normalizePhoneNumber(value || '');
   return number.length >= 10 && number.length <= 15 ? number : null;
 }
@@ -64,6 +69,7 @@ export async function handleCreatorCommand(argument, {
   nodeVersion = process.version,
   presence,
   config = {},
+  gemini,
   exit = () => process.exit(0)
 }) {
   const [, subcommand = '', rest = ''] = argument.match(/^(\S*)\s*([\s\S]*)$/) || [];
@@ -198,6 +204,67 @@ export async function handleCreatorCommand(argument, {
         `VIP: ${vip || 'não'}`,
         `Bloqueado: ${blocked ? 'sim' : 'não'}`
       ].join('\n');
+    }
+    case 'patroa': {
+      const settings = await storage.getBotSettings();
+      const current = resolvePatroa(config.patroa, settings.patroa);
+      if (!value) {
+        return current
+          ? `Patroa: ${current.name} (${current.number}). Só é respondida na primeira mensagem; depois fica em silêncio por ${current.cooldownHours} h.\nTroque com /criador patroa <número> <nome>, ajuste com /criador patroa espera <horas> ou tire com /criador patroa remover.`
+          : 'Nenhuma patroa definida. Use /criador patroa 558699028292 Paulina';
+      }
+      const [first = '', ...others] = value.split(/\s+/);
+      if (['remover', 'tirar', 'apagar'].includes(first.toLowerCase())) {
+        if (!settings.patroa && config.patroa) return 'A patroa vem da configuração (NUMERO_PATROA); tire de lá.';
+        await storage.updateBotSettings({ patroa: null });
+        return 'Patroa removida: o número dela volta a ser tratado como contato comum.';
+      }
+      if (['espera', 'intervalo', 'cooldown'].includes(first.toLowerCase())) {
+        const hours = Number(String(others[0] || '').replace(',', '.'));
+        if (!current) return 'Defina primeiro a patroa: /criador patroa 558699028292 Paulina';
+        if (!Number.isFinite(hours) || hours <= 0 || hours > 168) return 'Use: /criador patroa espera 5 (horas, de 1 a 168)';
+        await storage.updateBotSettings({ patroa: { ...(settings.patroa || {}), number: current.number, name: current.name, cooldownHours: hours } });
+        return `Tempo de espera da patroa: ${hours} h.`;
+      }
+      const number = parseNumber(first);
+      if (!number) return 'Use: /criador patroa 558699028292 Paulina';
+      const name = others.join(' ').trim() || 'Patroa';
+      await storage.updateBotSettings({ patroa: { number, name, cooldownHours: current?.cooldownHours ?? 5 } });
+      return `Patroa definida: ${name} (${number}). Ela é tratada com máxima reverência, recebe resposta só na primeira mensagem e depois o bot se cala por ${current?.cooldownHours ?? 5} h.`;
+    }
+    case 'config': {
+      const settings = await storage.getBotSettings();
+      const patroa = resolvePatroa(config.patroa, settings.patroa);
+      const vips = Object.entries({ ...(config.vipContacts || {}), ...(settings.vips || {}) });
+      const pixKey = settings.pix === 'desligado' ? '' : (settings.pix || config.pixKey || '');
+      const silenced = presence?.silencedUntil?.();
+      return [
+        '*Painel do criador*',
+        `Modo: ${settings.ausencia || 'on'} (on = responde a todos; auto = só quando o dono está offline; off = calado)`,
+        `Modelo do Gemini: ${gemini?.getModel?.() || config.geminiModel || '(desconhecido)'}`,
+        `Pix: ${pixKey ? 'ligado (a chave só sai quando alguém pede)' : 'desligado'}`,
+        `Patroa: ${patroa ? `${patroa.name} (${patroa.number}), espera de ${patroa.cooldownHours} h` : '(nenhuma)'}`,
+        `VIPs: ${vips.length ? vips.map(([number, description]) => `${number} (${description})`).join('; ') : '(nenhum)'}`,
+        `Tom extra: ${settings.tom || '(nenhum)'}`,
+        `Instruções do dono: ${settings.instrucoes || '(nenhuma)'}`,
+        `Horário de ausência: ${settings.ausenciaHorario || '(nenhum)'}`,
+        `Silêncio geral: ${silenced ? `até ${formatDateTime(new Date(silenced), timeZone)}` : 'não'}`,
+        `Bloqueados: ${(await storage.listBlocked()).length}`
+      ].join('\n');
+    }
+    case 'ligar':
+      await storage.updateBotSettings({ ausencia: 'on' });
+      return 'Bot ligado: responde a todos os contatos.';
+    case 'desligar':
+      await storage.updateBotSettings({ ausencia: 'off' });
+      return 'Bot desligado: não responde a nenhum contato até você mandar /criador ligar.';
+    case 'modelo': {
+      if (!gemini?.getModel) return 'A troca de modelo não está disponível.';
+      if (!value) return `Modelo atual: ${gemini.getModel()}\nPara trocar: /criador modelo <nome> (ex.: gemini-2.5-flash). Vale até reiniciar.`;
+      if (!/^[a-z0-9][a-z0-9._-]{2,60}$/i.test(value)) return 'Nome de modelo inválido.';
+      const previous = gemini.getModel();
+      gemini.setModel(value);
+      return `Modelo trocado: ${previous} → ${value}. Vale até reiniciar; se der erro, volte com /criador modelo ${previous}`;
     }
     case 'reiniciar': {
       setTimeout(exit, 1500).unref?.();
