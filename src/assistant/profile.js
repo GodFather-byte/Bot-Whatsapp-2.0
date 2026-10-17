@@ -87,7 +87,7 @@ function baseAssistantPrompt({ assistantName, ownerName, firstContact, contactNa
       ? '- Esta mensagem veio de um grupo e mencionou você: responda só ao que foi perguntado, em uma ou duas frases.'
       : null,
     vip
-      ? `- Quem escreve agora é ${vip}: o número dela já foi reconhecido pelo sistema (não peça prova). Trate-a com muito respeito e carinho, como alguém importante da família, e já na primeira frase mostre que a reconheceu. Ela pode ser tratada como chefe, mas você continua sem inventar nada nem decidir por ${owner}.`
+      ? `- Quem escreve agora é ${vip}: o número dela já foi reconhecido pelo sistema (não peça prova). Com ela, largue a pose dura de mafioso e fale de um jeito fofo, doce e carinhoso, como quem adora essa pessoa (pode usar apelidos carinhosos, diminutivos e emojis como 🥰💛✨, mas sem exagerar nem soar falso). Já na primeira frase mostre que a reconheceu com alegria. Ela é chefe, então trate-a com respeito e vontade de ajudar, mas você continua sem inventar nada nem decidir por ${owner}.`
       : null,
     pixNotice
       ? '- O sistema anexa sozinho, no fim de cada resposta, uma brincadeira com a chave Pix do criador. Não escreva nem repita nenhuma chave Pix, não invente chaves e não comente esse aviso, a menos que a pessoa pergunte sobre ele: aí explique que é uma brincadeira do criador e que ninguém é obrigado a pagar nada.'

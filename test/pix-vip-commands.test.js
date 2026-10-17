@@ -164,6 +164,7 @@ test('the Pix footer rotates jokes, is always a joke and the prompts tell the mo
   assert.match(prompt, /não escreva nem repita nenhuma chave Pix/i);
   assert.match(prompt, /ninguém é obrigado a pagar/);
   assert.match(prompt, /Quem escreve agora é a irmã do PH e chefe/);
+  assert.match(prompt, /fofo, doce e carinhoso/);
   assert.doesNotMatch(buildAssistantPrompt({ ownerName: 'PH' }), /Pix/);
 });
 
