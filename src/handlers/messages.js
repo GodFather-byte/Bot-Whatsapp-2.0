@@ -8,8 +8,8 @@ import { splitMessage, toWhatsAppFormat } from '../utils/format.js';
 import { asksForPix, findVip, mergeVips, pixFooter } from '../assistant/extras.js';
 
 const PIX_OFF = 'desligado';
-const rateLimitedMessage = 'Calma, meu amigo. A família não é tão rápida assim. Aguarde um pouco. 🥃';
-const failureMessage = 'Houve um contratempo nos negócios da família. Tente novamente em instantes. 🕴️';
+const rateLimitedMessage = 'Você está enviando muitas mensagens. Aguarde um pouco.';
+const failureMessage = 'Ocorreu um problema ao processar sua mensagem. Tente novamente em instantes.';
 const oneDayAgo = () => Date.now() - 86_400_000;
 const MAX_MESSAGE_AGE_MS = 2 * 60_000;
 const MAX_SEEN_IDS = 1000;
@@ -212,17 +212,9 @@ export function createMessageHandler({
     // Contatos reconhecidos (ex.: a irmã do dono) são tratados com respeito e não recebem a brincadeira do Pix.
     const vip = isOwner ? null : findVip(mergeVips(config?.vipContacts, settings.vips), senderNumbers);
     const pixKey = settings.pix === PIX_OFF ? '' : (settings.pix || config?.pixKey || '');
-    // A chave só sai quando alguém pede; de vez em quando (e nunca para VIPs) sai só uma piada sobre o Pix, sem a chave.
-    const pixAllowed = Boolean(pixKey) && !isOwner && !isGroup;
-    const pixFooterText = pixAllowed
-      ? pixFooter({
-        key: pixKey,
-        asked: asksForPix(media?.text || text),
-        allowJoke: !vip,
-        jokeChance: (config?.pixJokePercent ?? 20) / 100
-      })
-      : '';
-    const showPix = pixAllowed;
+    // A chave só sai quando alguém pede (nunca para o dono nem em grupos).
+    const showPix = Boolean(pixKey) && !isOwner && !isGroup;
+    const pixFooterText = showPix ? pixFooter({ key: pixKey, asked: asksForPix(media?.text || text) }) : '';
     const extraInstruction = [settings.instrucoes, settings.tom && `Tom pedido pelo criador: ${settings.tom}`].filter(Boolean).join('\n');
     const generateResponse = gemini.stream || gemini.generate;
     const answer = await generateResponse.call(gemini, {

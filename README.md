@@ -17,7 +17,15 @@ O **Bot PH Zeus** é o consigliere de confiança do chefe (você). Quando o **ch
 
 ## 🎭 O sotaque da família
 
-As respostas do consigliere têm tom de máfia de filme, **só de brincadeira**: ele chama você de "chefe" e os contatos de "meu amigo". Por regra, ele **nunca ameaça, intimida nem fala de violência ou crime**, e se a conversa for séria ele larga a encenação. Quer sem sotaque? Use `/persona formal` na conversa "Você" ou edite `SYSTEM_INSTRUCTIONS.padrao` em `src/services/gemini.js` e o prompt em `src/assistant/profile.js`.
+O tom depende de com quem o bot fala:
+
+| Com quem | Tom |
+|---|---|
+| **Contatos comuns e o dono** | **Homem de negócios**: sério, profissional, objetivo e cordial. Sem piadas, gírias, apelidos nem emojis. |
+| **Contatos VIP** (ex.: a Paula, irmã do PH) | **Fofo, doce e carinhoso**, com apelidos, elogios e emojis 🥰💛✨🌷. |
+| **O criador** | O tom de **máfia de filme**, de brincadeira ("meu criador"). |
+
+Por regra, ele **nunca ameaça, intimida nem fala de violência ou crime**. Os tons ficam em `TONE_INSTRUCTIONS` e nos prompts de `src/assistant/profile.js`. O Pix **não tem piadas**: a chave só sai quando alguém pede.
 
 ## 🥃 Quando o chefe está "fora do escritório"
 
@@ -121,8 +129,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `REMINDER_CHECK_INTERVAL` | ⛔ Opcional | Intervalo de verificação em milissegundos. |
 | `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
 | `PIX_CHAVE` | ⛔ Opcional | Chave Pix do criador. O bot **só envia a chave quando alguém pede** (pix, chave, pagar...), nunca ao dono nem ao criador. Troque ou desligue com `/criador pix`. Um CPF aqui fica visível para quem pedir. |
-| `PIX_PIADAS_PERCENT` | ⛔ Opcional | Chance (0 a 100, padrão `20`) de uma resposta trazer, de vez em quando, uma piada sobre Pix **sem a chave** (os VIPs não recebem piadas). `0` desliga. |
-| `CONTATOS_VIP` | ⛔ Opcional | Contatos reconhecidos e tratados com respeito, no formato `número=descrição;número=descrição` (ex.: `5511999999999=irmã do PH e chefe`). Também com `/criador vip`. |
+| `CONTATOS_VIP` | ⛔ Opcional | Contatos reconhecidos e tratados com respeito, no formato `número=descrição;número=descrição` (ex.: `5511962008294=Paula, irmã do PH e chefe`). Também com `/criador vip`. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
 | `SILENCIAR_APOS_RESPOSTA_MIN` | ⛔ Opcional | Minutos em que o assistente se cala numa conversa depois que você responde (padrão `5`). |
@@ -153,7 +160,7 @@ A IA não aprende sozinha entre conversas, então a variedade vem do prompt: a c
 
 ### Comandos do criador (`/criador`)
 
-Novos: `/criador pix [chave|desligar]`, `/criador vip <número> <descrição>`, `/criador vips`, `/criador vip remover <número>`, `/criador tom <texto|limpar>` (muda o jeito de falar com todos), `/criador ficha <número>` e `/criador reiniciar`. O dono e o criador também ganharam `/calc`, `/hora`, `/clima`, `/noticias`, `/cambio`, `/traduzir`, `/dado`, `/moeda`, `/sorteio` e `/piada` (veja `/ajuda`).
+Novos: `/criador pix [chave|desligar]`, `/criador vip <número> <descrição>`, `/criador vips`, `/criador vip remover <número>`, `/criador tom <texto|limpar>` (muda o jeito de falar com todos), `/criador ficha <número>` e `/criador reiniciar`. O dono e o criador também ganharam `/calc`, `/hora`, `/clima`, `/noticias`, `/cambio`, `/traduzir`, `/dado`, `/moeda` e `/sorteio` (veja `/ajuda`).
 
 Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bot é o do criador) usa estes comandos, **sempre em conversa privada**. Para qualquer outra pessoa, `/criador` é texto comum. O assistente também sabe que está falando com o criador.
 
@@ -283,7 +290,7 @@ O plano gratuito do Render "congela" o serviço depois de 15 minutos sem receber
 
 ## ⚠️ Conselhos do chefe (observações importantes)
 
-- O consigliere fala **em seu nome**: avise quem costuma te escrever, e mantenha `/admin instrucoes` atualizado. Ele sempre se identifica como assistente virtual. Aqui a máfia é só tema: ninguém recebe ameaça, só uma resposta educada.
+- O consigliere fala **em seu nome**: avise quem costuma te escrever, e mantenha `/admin instrucoes` atualizado. Ele sempre se identifica como assistente virtual. Com os contatos ele é sério e profissional; a máfia é só o tom reservado ao criador.
 - Usar o WhatsApp com bots não oficiais pode violar os termos do WhatsApp e levar ao banimento do número. Evite envios em massa e use por sua conta e risco.
 - Seu telefone precisa abrir o WhatsApp de vez em quando para manter o aparelho conectado ativo.
 - Proteja `/dashboard` com um `DASHBOARD_AUTH_TOKEN` forte e restrinja `WHATSAPP_ALLOWED_NUMBERS` se quiser que só algumas pessoas sejam atendidas.
