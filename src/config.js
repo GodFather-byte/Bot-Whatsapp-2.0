@@ -95,6 +95,8 @@ export function loadConfig(env = process.env) {
     creatorNumbers: parseAllowedNumbers(env.NUMERO_CRIADOR ?? DEFAULT_CREATOR_NUMBER, 'NUMERO_CRIADOR'),
     // Chave Pix do criador, mostrada de brincadeira no fim das respostas. Também pode ser trocada com /criador pix.
     pixKey: (env.PIX_CHAVE || '').trim(),
+    // A chave só é enviada quando alguém pede; esta é a chance (0-100%) de uma piada de Pix, sem a chave, em cada resposta.
+    pixJokePercent: Math.min(nonNegativeInteger(env.PIX_PIADAS_PERCENT, 20, 'PIX_PIADAS_PERCENT'), 100),
     // Contatos que o assistente reconhece e trata com respeito, como a irmã do dono. Também gerenciados com /criador vip.
     vipContacts: parseVipContacts(env.CONTATOS_VIP),
     timeZone: parseTimeZone(env.FUSO_HORARIO),

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadConfig, parseVipContacts } from '../src/config.js';
 import { buildAssistantPrompt } from '../src/assistant/profile.js';
-import { PIX_JOKES, pixFooter } from '../src/assistant/extras.js';
+import { asksForPix, PIX_JOKES, PIX_KEY_LINES, pixFooter } from '../src/assistant/extras.js';
 import { handleCommand } from '../src/handlers/commands.js';
 import { createMessageHandler } from '../src/handlers/messages.js';
 import { MemoryStorage } from '../src/services/storage.js';
@@ -21,7 +21,7 @@ function setup(options = {}) {
   const prompts = [];
   const storage = options.storage || new MemoryStorage();
   const handler = createMessageHandler({
-    config: { pixKey: FAKE_PIX, vipContacts: { [SISTER]: 'a irmã do PH e chefe' }, ...options.config },
+    config: { pixKey: FAKE_PIX, pixJokePercent: 0, vipContacts: { [SISTER]: 'a irmã do PH e chefe' }, ...options.config },
     storage,
     gemini: { generate: async ({ text, assistant, extraInstruction }) => { prompts.push({ text, assistant, extraInstruction }); return 'ok'; } },
     allowlist: createAllowlist([]),
@@ -44,44 +44,61 @@ function setup(options = {}) {
   return { sent, prompts, storage, from };
 }
 
-test('every answer to a contact ends with the Pix joke, and it is the plain configured key', async () => {
+test('the Pix key is only sent when someone asks for it', async () => {
   const { sent, prompts, from } = setup();
   await from(STRANGER, 'oi');
   await from(STRANGER, 'tudo bem?');
-  assert.equal(sent.length, 2);
-  for (const message of sent) {
-    assert.ok(message.text.startsWith('ok\n\n'), 'a resposta da IA vem primeiro');
-    assert.ok(message.text.includes(FAKE_PIX), 'a chave aparece no aviso');
-  }
+  assert.deepEqual(sent.map(({ text }) => text), ['ok', 'ok'], 'sem pedido e sem sorteio, nada é anexado');
+
+  await from(STRANGER, 'me passa o pix do chefe?');
+  assert.ok(sent.at(-1).text.startsWith('ok\n\n'), 'a resposta da IA vem primeiro');
+  assert.ok(sent.at(-1).text.includes(FAKE_PIX), 'a chave aparece quando pedem');
   assert.equal(prompts[0].assistant.pixNotice, true);
-  assert.doesNotMatch(prompts[0].text, new RegExp(FAKE_PIX), 'a chave nunca vai para o modelo');
+  assert.doesNotMatch(prompts[2].text, new RegExp(FAKE_PIX), 'a chave nunca vai para o modelo');
+
+  await from(STRANGER, 'qual a chave?');
+  assert.ok(sent.at(-1).text.includes(FAKE_PIX));
 });
 
-test('the owner, the creator and VIP contacts do not get the Pix joke', async () => {
-  const { sent, prompts, from } = setup();
+test('from time to time a Pix joke appears, never with the key', async () => {
+  const { sent, from } = setup({ config: { pixJokePercent: 100 } });
+  await from(STRANGER, 'oi');
+  await from(STRANGER, 'tudo bem?');
+  for (const message of sent) {
+    assert.ok(message.text.startsWith('ok\n\n') && /pix/i.test(message.text), 'tem a piada');
+    assert.ok(!message.text.includes(FAKE_PIX), 'mas sem a chave');
+  }
+});
+
+test('the owner and the creator never get Pix lines, and VIPs only get the key when they ask', async () => {
+  const { sent, prompts, from } = setup({ config: { pixJokePercent: 100 } });
   await from(OWNER, 'oi');
   await from(CREATOR, 'oi');
+  await from(OWNER, 'qual a chave pix?');
   await from(SISTER, 'oi');
-  assert.deepEqual(sent.map(({ text }) => text), ['ok', 'ok', 'ok']);
-  assert.equal(prompts[2].assistant.vip, 'a irmã do PH e chefe');
+  assert.deepEqual(sent.map(({ text }) => text), ['ok', 'ok', 'ok', 'ok'], 'nem piada para VIP, nem chave para dono');
+  assert.equal(prompts[3].assistant.vip, 'a irmã do PH e chefe');
   assert.equal(prompts[0].assistant.vip, undefined);
+
+  await from(SISTER, 'me manda o pix dele?');
+  assert.ok(sent.at(-1).text.includes(FAKE_PIX));
 });
 
 test('without a Pix key nothing is added, and /criador pix turns it on, changes it and off', async () => {
   const { sent, from, storage } = setup({ config: { pixKey: '' } });
-  await from(STRANGER, 'oi');
+  await from(STRANGER, 'me passa o pix');
   assert.equal(sent.at(-1).text, 'ok');
 
   await from(CREATOR, '/criador pix outra-chave');
   assert.match(sent.at(-1).text, /Pix atualizado/);
   assert.equal((await storage.getBotSettings()).pix, 'outra-chave');
-  await from(STRANGER, 'oi');
+  await from(STRANGER, 'me passa o pix');
   assert.ok(sent.at(-1).text.includes('outra-chave'));
 
   await from(CREATOR, '/criador pix');
   assert.match(sent.at(-1).text, /Pix ativo: outra-chave/);
   await from(CREATOR, '/criador pix desligar');
-  await from(STRANGER, 'oi');
+  await from(STRANGER, 'me passa o pix');
   assert.equal(sent.at(-1).text, 'ok');
   await from(CREATOR, '/criador pix com espaço');
   assert.match(sent.at(-1).text, /Chave inválida/);
@@ -154,17 +171,31 @@ test('configuration reads the Pix key and the VIP list from the environment', ()
   assert.deepEqual(loadConfig({}).vipContacts, {});
 });
 
-test('the Pix footer rotates jokes, is always a joke and the prompts tell the model not to touch the key', () => {
-  assert.equal(pixFooter(''), '');
-  const seen = new Set(PIX_JOKES.map((_, index) => pixFooter(FAKE_PIX, () => index / PIX_JOKES.length)));
-  assert.equal(seen.size, PIX_JOKES.length);
-  assert.ok([...seen].every((text) => text.includes(FAKE_PIX) && !text.includes('{pix}')));
+test('the Pix footer sends the key only on request, rotates jokes and the prompts tell the model not to touch the key', () => {
+  assert.equal(pixFooter({ key: '', asked: true }), '');
+  assert.equal(pixFooter({ key: FAKE_PIX, jokeChance: 0 }), '', 'sem pedido e sem sorteio, nada');
+  assert.equal(pixFooter({ key: FAKE_PIX, allowJoke: false, jokeChance: 1 }), '', 'VIP não recebe piada');
+
+  const keyLines = new Set(PIX_KEY_LINES.map((_, index) => pixFooter({ key: FAKE_PIX, asked: true, random: () => index / PIX_KEY_LINES.length })));
+  assert.equal(keyLines.size, PIX_KEY_LINES.length);
+  assert.ok([...keyLines].every((text) => text.includes(FAKE_PIX) && !text.includes('{pix}')));
+
+  let calls = 0;
+  const jokes = new Set(PIX_JOKES.map((_, index) => pixFooter({ key: FAKE_PIX, jokeChance: 1, random: () => (calls++ % 2 === 0 ? 0 : index / PIX_JOKES.length) })));
+  assert.equal(jokes.size, PIX_JOKES.length);
+  assert.ok([...jokes].every((text) => !text.includes(FAKE_PIX) && /pix/i.test(text)));
+
+  assert.equal(asksForPix('me passa o PIX?'), true);
+  assert.equal(asksForPix('qual a chave'), true);
+  assert.equal(asksForPix('quero pagar um café pra ele'), true);
+  assert.equal(asksForPix('oi, tudo bem?'), false);
 
   const prompt = buildAssistantPrompt({ ownerName: 'PH', pixNotice: true, vip: 'a irmã do PH e chefe' });
   assert.match(prompt, /não escreva nem repita nenhuma chave Pix/i);
   assert.match(prompt, /ninguém é obrigado a pagar/);
   assert.match(prompt, /Quem escreve agora é a irmã do PH e chefe/);
-  assert.match(prompt, /fofo, doce e carinhoso/);
+  assert.match(prompt, /o mais fofo, doce e carinhoso possível/);
+  assert.match(prompt, /princesa/);
   assert.doesNotMatch(buildAssistantPrompt({ ownerName: 'PH' }), /Pix/);
 });
 

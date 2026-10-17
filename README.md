@@ -120,7 +120,8 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `DASHBOARD_ENABLED` | ⛔ Opcional | Habilita `/dashboard`; requer `DASHBOARD_AUTH_TOKEN`. |
 | `REMINDER_CHECK_INTERVAL` | ⛔ Opcional | Intervalo de verificação em milissegundos. |
 | `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
-| `PIX_CHAVE` | ⛔ Opcional | Chave Pix do criador, solta de brincadeira no fim das respostas aos contatos (nunca ao dono, ao criador nem aos VIPs). Troque ou desligue com `/criador pix`. Um CPF aqui fica visível para todos os contatos. |
+| `PIX_CHAVE` | ⛔ Opcional | Chave Pix do criador. O bot **só envia a chave quando alguém pede** (pix, chave, pagar...), nunca ao dono nem ao criador. Troque ou desligue com `/criador pix`. Um CPF aqui fica visível para quem pedir. |
+| `PIX_PIADAS_PERCENT` | ⛔ Opcional | Chance (0 a 100, padrão `20`) de uma resposta trazer, de vez em quando, uma piada sobre Pix **sem a chave** (os VIPs não recebem piadas). `0` desliga. |
 | `CONTATOS_VIP` | ⛔ Opcional | Contatos reconhecidos e tratados com respeito, no formato `número=descrição;número=descrição` (ex.: `5511999999999=irmã do PH e chefe`). Também com `/criador vip`. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
