@@ -65,9 +65,11 @@ test('the creator is recognized by number or LID and also gets the owner command
   await from(`${CREATOR}@s.whatsapp.net`, '/admin status');
   assert.match(sent.at(-1).text, /Mensagens processadas/);
 
+  // Texto comum do criador não é respondido: ele só ganha resposta quando usa um comando.
+  const before = sent.length;
   await from(`${CREATOR}@s.whatsapp.net`, 'oi, sou eu');
-  assert.equal(prompts.at(-1).assistant.isCreator, true);
-  assert.equal(prompts.at(-1).assistant.withOwner, true);
+  assert.equal(prompts.length, 0);
+  assert.equal(sent.length, before);
 });
 
 test('nobody else can use /criador, it is plain text for them', async () => {
@@ -168,8 +170,9 @@ test('every answer gets a different way of speaking and avoids the recent openin
 test('contacts get a real, serious conversation, not just "I will tell the boss"', () => {
   const prompt = buildAssistantPrompt({ ownerName: 'Paulo' });
   assert.match(prompt, /Conversar e atender de verdade/);
-  assert.match(prompt, /homem de negócios/);
-  assert.doesNotMatch(prompt, /mafioso|consigliere/i);
+  assert.match(prompt, /mafioso SÉRIO/);
+  assert.match(prompt, /Sem piadas/);
+  assert.doesNotMatch(prompt, /homem de negócios/);
   assert.match(prompt, /não repita isso em toda resposta/);
   assert.match(prompt, /Nunca invente nada sobre Paulo/);
   assert.match(prompt, /nunca ameace/i);
@@ -253,14 +256,13 @@ test('/criador silencio quiets the bot for everybody, the creator included, unti
   await from(creatorJid, '/pode falar meu filho');
   assert.match(sent.at(-1).text, /Agora sim, meu criador/);
   await from(creatorJid, 'voltou?');
-  assert.equal(prompts.length, 1);
-  assert.equal(prompts[0].assistant.isCreator, true);
+  assert.equal(prompts.length, 0, 'o criador só é respondido quando usa comando');
   await from(bia, 'oi');
-  assert.equal(prompts.length, 1, 'os contatos seguem em silêncio');
+  assert.equal(prompts.length, 0, 'os contatos seguem em silêncio');
 
   now += 3 * 60_000;
   await from(ana, 'voltou?');
-  assert.equal(prompts.length, 2, 'passados 2 minutos o silêncio dos contatos acaba');
+  assert.equal(prompts.length, 1, 'passados 2 minutos o silêncio dos contatos acaba');
 });
 
 test('only the creator can lift the silence with "/pode falar meu filho"', async () => {
@@ -279,7 +281,7 @@ test('only the creator can lift the silence with "/pode falar meu filho"', async
   assert.match(sent.at(-1).text, /já estava de boca aberta/);
   await from(creatorJid, 'oi');
   await from(ana, 'oi');
-  assert.equal(prompts.length, 2);
+  assert.equal(prompts.length, 1, 'só a Ana é respondida; o criador só em comandos');
 });
 
 test('/criador silencio can target one chat, be cancelled and rejects nonsense', async () => {
