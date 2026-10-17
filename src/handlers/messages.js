@@ -197,7 +197,7 @@ export function createMessageHandler({
     }
   }
 
-  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, patroa = null, receivedAt = 0, msg, text, media, settings, senderNumbers = [] }) {
+  async function respond({ sock, remoteJid, isGroup, isOwner, isCreator = false, receivedAt = 0, msg, text, media, settings, senderNumbers = [] }) {
     const user = await storage.getUser(remoteJid);
     const history = await storage.getHistory(remoteJid, 10);
 
@@ -230,7 +230,6 @@ export function createMessageHandler({
         withOwner: isOwner,
         isCreator,
         vip: vip?.description,
-        patroa: patroa ? `${patroa.name}, esposa do chefe` : undefined,
         pixNotice: showPix
       }
     });
@@ -243,7 +242,6 @@ export function createMessageHandler({
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
 
     await send(sock, remoteJid, pixFooterText ? `${answer}\n\n${pixFooterText}` : answer, isGroup ? msg : undefined);
-    if (patroa) await storage.updateUser(remoteJid, { patroaRespondeuEm: new Date(now()).toISOString() });
     if (firstContact && notifyOwner && !isGroup) await notifyOwners(sock, remoteJid, msg, senderNumbers, userText, answer);
     stats.recentMessages.unshift({
       de: remoteJid,
@@ -394,16 +392,8 @@ export function createMessageHandler({
       // Por padrão o assistente responde a todos (modo "on"); "auto" e "off" continuam disponíveis com /admin ausente.
       if (!isOwner && !presence.isAway({ mode: settings.ausencia || 'on', schedule: settings.ausenciaHorario, chatJid: remoteJid })) return skip(`dono ativo ou modo ausente desligado (modo: ${settings.ausencia || 'on'})`, remoteJid);
 
-      // A patroa (esposa do dono) só recebe resposta na primeira mensagem; depois o assistente se cala até passar o tempo de espera.
-      const patroa = isOwner ? null : resolvePatroa(config?.patroa, settings.patroa);
-      const patroaContact = isPatroa(patroa, senderNumbers) ? patroa : null;
-      if (patroaContact) {
-        const answeredAt = (await storage.getUser(remoteJid)).patroaRespondeuEm;
-        const waitMs = patroaContact.cooldownHours * 3_600_000;
-        if (answeredAt && now() - new Date(answeredAt).getTime() < waitMs) {
-          return skip(`patroa já foi atendida; só volta a ser respondida após ${patroaContact.cooldownHours}h`, remoteJid);
-        }
-      }
+      // A patroa (esposa do dono) NUNCA é respondida: tudo que ela escreve é ignorado, sem avisar ninguém.
+      if (isPatroa(resolvePatroa(config?.patroa, settings.patroa), senderNumbers)) return skip('contato configurado como patroa: o bot nunca responde a ela', remoteJid);
 
       if (!isOwner) {
         const rate = rateLimiter.consume(senderJid);
@@ -440,7 +430,7 @@ export function createMessageHandler({
       // O criador só ganha resposta quando usa um comando: texto comum dele é ignorado.
       if (isCreator) return skip('criador só recebe resposta a comandos (/criador ajuda)', remoteJid);
 
-      const request = { sock, remoteJid, isGroup, isOwner, isCreator, patroa: patroaContact, receivedAt, msg, text, media, settings, senderNumbers };
+      const request = { sock, remoteJid, isGroup, isOwner, isCreator, receivedAt, msg, text, media, settings, senderNumbers };
       if (debounceMs > 0 && !media) {
         queueText(`${remoteJid}|${senderJid}`, request);
         return;

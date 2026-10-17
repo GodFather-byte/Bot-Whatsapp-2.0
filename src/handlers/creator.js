@@ -16,7 +16,7 @@ const creatorHelp = [
   '/criador vips — lista os contatos reconhecidos; /criador vip remover <número> tira um',
   '/criador tom <texto> | limpar — muda o jeito de falar do bot com todos (ex.: bem debochado, ou só em rimas)',
   '/criador ficha <número> — resumo do contato: mensagens trocadas, última conversa, se é VIP ou está bloqueado',
-  '/criador patroa [número nome] | espera <horas> | remover — a esposa do PH: só é respondida na primeira mensagem e depois fica em silêncio pelo tempo de espera (padrão 5 h)',
+  '/criador patroa [número nome | remover] — a esposa do PH: o bot NUNCA responde a ela, de jeito nenhum (e ela fica fora dos avisos em massa)',
   '/criador config — painel com tudo que está configurado (modo, Pix, VIPs, patroa, tom, silêncio, modelo)',
   '/criador ligar | desligar — liga o bot para todos (modo on) ou desliga de vez (modo off)',
   '/criador modelo [nome] — mostra ou troca o modelo do Gemini com o bot no ar (vale até reiniciar)',
@@ -210,7 +210,7 @@ export async function handleCreatorCommand(argument, {
       const current = resolvePatroa(config.patroa, settings.patroa);
       if (!value) {
         return current
-          ? `Patroa: ${current.name} (${current.number}). Só é respondida na primeira mensagem; depois fica em silêncio por ${current.cooldownHours} h.\nTroque com /criador patroa <número> <nome>, ajuste com /criador patroa espera <horas> ou tire com /criador patroa remover.`
+          ? `Patroa: ${current.name} (${current.number}). O bot nunca responde a ela e a deixa de fora dos avisos em massa.\nTroque com /criador patroa <número> <nome> ou tire com /criador patroa remover.`
           : 'Nenhuma patroa definida. Use /criador patroa 558699028292 Paulina';
       }
       const [first = '', ...others] = value.split(/\s+/);
@@ -219,18 +219,11 @@ export async function handleCreatorCommand(argument, {
         await storage.updateBotSettings({ patroa: null });
         return 'Patroa removida: o número dela volta a ser tratado como contato comum.';
       }
-      if (['espera', 'intervalo', 'cooldown'].includes(first.toLowerCase())) {
-        const hours = Number(String(others[0] || '').replace(',', '.'));
-        if (!current) return 'Defina primeiro a patroa: /criador patroa 558699028292 Paulina';
-        if (!Number.isFinite(hours) || hours <= 0 || hours > 168) return 'Use: /criador patroa espera 5 (horas, de 1 a 168)';
-        await storage.updateBotSettings({ patroa: { ...(settings.patroa || {}), number: current.number, name: current.name, cooldownHours: hours } });
-        return `Tempo de espera da patroa: ${hours} h.`;
-      }
       const number = parseNumber(first);
       if (!number) return 'Use: /criador patroa 558699028292 Paulina';
       const name = others.join(' ').trim() || 'Patroa';
-      await storage.updateBotSettings({ patroa: { number, name, cooldownHours: current?.cooldownHours ?? 5 } });
-      return `Patroa definida: ${name} (${number}). Ela é tratada com máxima reverência, recebe resposta só na primeira mensagem e depois o bot se cala por ${current?.cooldownHours ?? 5} h.`;
+      await storage.updateBotSettings({ patroa: { number, name } });
+      return `Patroa definida: ${name} (${number}). O bot não responde mais a ela, de jeito nenhum, e ela fica fora dos avisos em massa.`;
     }
     case 'config': {
       const settings = await storage.getBotSettings();
@@ -243,7 +236,7 @@ export async function handleCreatorCommand(argument, {
         `Modo: ${settings.ausencia || 'on'} (on = responde a todos; auto = só quando o dono está offline; off = calado)`,
         `Modelo do Gemini: ${gemini?.getModel?.() || config.geminiModel || '(desconhecido)'}`,
         `Pix: ${pixKey ? 'ligado (a chave só sai quando alguém pede)' : 'desligado'}`,
-        `Patroa: ${patroa ? `${patroa.name} (${patroa.number}), espera de ${patroa.cooldownHours} h` : '(nenhuma)'}`,
+        `Patroa (nunca respondida): ${patroa ? `${patroa.name} (${patroa.number})` : '(nenhuma)'}`,
         `VIPs: ${vips.length ? vips.map(([number, description]) => `${number} (${description})`).join('; ') : '(nenhum)'}`,
         `Tom extra: ${settings.tom || '(nenhum)'}`,
         `Instruções do dono: ${settings.instrucoes || '(nenhuma)'}`,

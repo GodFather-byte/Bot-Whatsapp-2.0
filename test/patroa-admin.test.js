@@ -26,7 +26,7 @@ function setup(options = {}) {
   };
   let now = options.now ?? new Date('2026-10-01T13:00:00Z').getTime();
   const handler = createMessageHandler({
-    config: { patroa: { number: PATROA, name: 'Paulina', cooldownHours: 5 }, ...options.config },
+    config: { patroa: { number: PATROA, name: 'Paulina' }, ...options.config },
     storage,
     gemini,
     allowlist: createAllowlist([]),
@@ -47,80 +47,78 @@ function setup(options = {}) {
     sendPresenceUpdate: async () => {}
   };
   const from = (number, text) => handler(sock, { key: { remoteJid: `${number}@s.whatsapp.net` }, message: { conversation: text } });
-  return { sent, prompts, storage, from, gemini, advance: (ms) => { now += ms; } };
+  return { handler, sock, sent, prompts, storage, from, gemini, advance: (ms) => { now += ms; } };
 }
 
-test('the patroa is answered on her first message only, then silenced for 5 hours', async () => {
+test('the patroa is never answered, not even on her first message, and nobody else is affected', async () => {
   const { sent, prompts, from, advance } = setup();
 
   await from(PATROA, 'oi, o PH está?');
-  assert.equal(sent.length, 1);
-  assert.equal(prompts[0].assistant.patroa, 'Paulina, esposa do chefe');
-
   await from(PATROA, 'e então?');
-  await from(PATROA, 'alô??');
-  assert.equal(sent.length, 1, 'depois da primeira resposta o bot se cala');
+  assert.equal(sent.length, 0, 'nenhuma resposta, nem para a primeira mensagem');
+  assert.equal(prompts.length, 0, 'a mensagem nem chega à IA');
 
-  advance(4 * HOUR + 59 * 60_000);
-  await from(PATROA, 'ainda cedo');
-  assert.equal(sent.length, 1, 'antes de 5 h continua em silêncio');
+  advance(24 * HOUR);
+  await from(PATROA, 'um dia depois');
+  assert.equal(sent.length, 0, 'e o silêncio não expira');
 
-  advance(2 * 60_000);
-  await from(PATROA, 'já passaram 5 horas');
-  assert.equal(sent.length, 2, 'passadas as 5 h ela volta a ser respondida');
-  await from(PATROA, 'mais uma');
-  assert.equal(sent.length, 2, 'e o relógio recomeça');
+  await from(STRANGER, 'oi');
+  assert.equal(sent.length, 1, 'os outros contatos seguem sendo atendidos');
+  assert.equal(prompts.length, 1);
 });
 
-test('messages sent in a burst by the patroa get one answer, and nobody else is limited by her silence', async () => {
-  const { sent, prompts, from } = setup({ handler: { debounceMs: 20 } });
+test('the patroa is ignored when she sends a burst or is identified by LID', async () => {
+  const { sent, prompts, from, handler, sock } = setup({ handler: { debounceMs: 20 } });
   await from(PATROA, 'oi');
   await from(PATROA, 'tudo bem?');
   await new Promise((resolve) => setTimeout(resolve, 60));
-  assert.equal(sent.length, 1);
-  assert.equal(prompts.length, 1);
-  assert.equal(prompts[0].text, 'oi\ntudo bem?');
+  assert.equal(sent.length, 0);
+  assert.equal(prompts.length, 0);
 
-  await from(PATROA, 'responde');
-  await from(STRANGER, 'oi');
+  // O WhatsApp pode identificá-la pelo LID, com o número só no campo alternativo.
+  await handler(sock, { key: { remoteJid: '987@lid', remoteJidAlt: `${PATROA}@s.whatsapp.net`, id: 'lid1' }, message: { conversation: 'oi pelo lid' } });
   await new Promise((resolve) => setTimeout(resolve, 60));
-  assert.equal(prompts.length, 2);
-  assert.equal(prompts[1].assistant.patroa, undefined, 'um contato comum não é a patroa');
+  assert.equal(sent.length, 0);
+  assert.equal(prompts.length, 0);
 });
 
-test('the patroa comes from the environment and can be set, tuned and removed by the creator', async () => {
-  const env = loadConfig({ NUMERO_PATROA: '+55 86 99028-292', NOME_PATROA: 'Paulina', PATROA_ESPERA_HORAS: '3' });
-  assert.deepEqual(env.patroa, { number: '558699028292', name: 'Paulina', cooldownHours: 3 });
+test('the patroa comes from the environment and can be set and removed by the creator', async () => {
+  const env = loadConfig({ NUMERO_PATROA: '+55 86 99028-292', NOME_PATROA: 'Paulina' });
+  assert.deepEqual(env.patroa, { number: '558699028292', name: 'Paulina' });
   assert.equal(loadConfig({}).patroa, null);
   assert.equal(resolvePatroa(null, null), null);
 
-  const { sent, prompts, from, advance } = setup({ config: { patroa: null } });
+  const { sent, prompts, from } = setup({ config: { patroa: null } });
   await from(PATROA, 'oi');
-  assert.equal(prompts.at(-1).assistant.patroa, undefined, 'sem configuração ela é contato comum');
+  assert.equal(prompts.length, 1, 'sem configuração ela é contato comum');
 
   await from(CREATOR, '/criador patroa 558699028292 Paulina');
-  assert.match(sent.at(-1).text, /Patroa definida: Paulina \(558699028292\)/);
-  await from(CREATOR, '/criador patroa espera 2');
-  assert.match(sent.at(-1).text, /Tempo de espera da patroa: 2 h/);
+  assert.match(sent.at(-1).text, /Patroa definida: Paulina \(558699028292\).*não responde mais a ela, de jeito nenhum/s);
   await from(CREATOR, '/criador patroa');
-  assert.match(sent.at(-1).text, /Paulina.*silêncio por 2 h/s);
-
-  advance(HOUR);
-  await from(PATROA, 'oi');
-  assert.equal(prompts.at(-1).assistant.patroa, 'Paulina, esposa do chefe');
-  const count = prompts.length;
+  assert.match(sent.at(-1).text, /Paulina.*nunca responde a ela/s);
+  const count = sent.length;
   await from(PATROA, 'oi de novo');
-  assert.equal(prompts.length, count, 'em silêncio');
-  advance(2 * HOUR + 60_000);
-  await from(PATROA, 'passaram 2 horas');
-  assert.equal(prompts.length, count + 1);
+  await from(PATROA, 'alô?');
+  assert.equal(sent.length, count, 'depois de definida, nunca mais é respondida');
+  assert.equal(prompts.length, 1);
 
-  await from(CREATOR, '/criador patroa espera 0');
-  assert.match(sent.at(-1).text, /Use: \/criador patroa espera/);
+  await from(CREATOR, '/criador patroa abc');
+  assert.match(sent.at(-1).text, /Use: \/criador patroa/);
   await from(CREATOR, '/criador patroa remover');
   assert.match(sent.at(-1).text, /Patroa removida/);
   await from(PATROA, 'sou eu');
-  assert.equal(prompts.at(-1).assistant.patroa, undefined);
+  assert.equal(prompts.length, 2, 'removida, volta a ser contato comum');
+});
+
+test('the patroa is left out of mass notices', async () => {
+  const { sent, from, storage } = setup({ handler: { broadcastDelayMs: 0 } });
+  await storage.addMessage({ remoteJid: `${PATROA}@s.whatsapp.net`, role: 'user', conteudo: 'oi antigo' });
+  await from(STRANGER, 'oi');
+  await from(OWNER, '/admin aviso Reunião amanhã');
+  assert.match(sent.at(-1).text, /Enviando o aviso para 1 contatos/);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const notices = sent.filter(({ text }) => text === 'Reunião amanhã');
+  assert.deepEqual(notices.map(({ jid }) => jid), [`${STRANGER}@s.whatsapp.net`]);
 });
 
 test('only the creator can set the patroa, and the creator is not answered in plain text', async () => {
@@ -144,7 +142,7 @@ test('new creator commands: config, ligar, desligar and modelo', async () => {
   assert.match(panel, /Painel do criador/);
   assert.match(panel, /Modo: on/);
   assert.match(panel, /Modelo do Gemini: gemini-teste/);
-  assert.match(panel, /Patroa: Paulina \(558699028292\), espera de 5 h/);
+  assert.match(panel, /Patroa \(nunca respondida\): Paulina \(558699028292\)/);
   assert.match(panel, /5511999999999 \(prima do chefe\)/);
   assert.match(panel, /Tom extra: bem calado/);
 

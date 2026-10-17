@@ -23,17 +23,12 @@ export function pixFooter({ key, asked = false, random = Math.random } = {}) {
   return pick(PIX_KEY_LINES, random).replace('{pix}', pixKey);
 }
 
-export const DEFAULT_PATROA_COOLDOWN_HOURS = 5;
-
-// A patroa (esposa do dono): vale a configuração salva com /criador patroa, senão a das variáveis de ambiente.
+// A patroa (esposa do dono) NUNCA é respondida: o bot ignora tudo que ela escreve, sem avisar.
+// Vale a configuração salva com /criador patroa, senão a das variáveis de ambiente.
 export function resolvePatroa(configured = null, stored = null) {
   const merged = { ...(configured || {}), ...(stored || {}) };
   if (!merged.number) return null;
-  return {
-    number: merged.number,
-    name: merged.name || 'a patroa',
-    cooldownHours: merged.cooldownHours > 0 ? merged.cooldownHours : DEFAULT_PATROA_COOLDOWN_HOURS
-  };
+  return { number: merged.number, name: merged.name || 'a patroa' };
 }
 
 export const isPatroa = (patroa, numbers = []) => Boolean(patroa) && numbers.includes(patroa.number);
