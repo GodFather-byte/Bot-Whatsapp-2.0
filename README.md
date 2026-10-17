@@ -23,7 +23,7 @@ O tom depende de com quem o bot fala:
 |---|---|
 | **Contatos comuns e o dono** | **Mafioso sério**: voz baixa, frases curtas e secas, cortês e frio ("a família", "respeito", "a palavra"). Sem piadas, gírias engraçadas nem emojis. |
 | **Contatos VIP** (ex.: a Paula, irmã do PH) | **Fofo, doce e carinhoso**, com apelidos, elogios e emojis 🥰💛✨🌷. |
-| **A patroa** (Paulina, esposa do PH) | **Máxima reverência**: "patroa"/"senhora", formal e às ordens. **Só é respondida na primeira mensagem**; depois o bot se cala por 5 h (`PATROA_ESPERA_HORAS`). |
+| **A patroa** (Paulina, esposa do PH) | **Nunca é respondida**: o bot ignora tudo que ela escreve, de jeito nenhum, em silêncio, e a deixa de fora dos avisos em massa (`/admin aviso`). |
 | **O criador** | **Não recebe resposta a texto comum**: o bot só fala com ele quando ele usa um comando (`/criador ...`, `/admin ...`). |
 
 O bot **não tem nome de bot**: ele se apresenta só como o consigliere do dono.
@@ -132,7 +132,7 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `REMINDER_CHECK_INTERVAL` | ⛔ Opcional | Intervalo de verificação em milissegundos. |
 | `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
 | `PIX_CHAVE` | ⛔ Opcional | Chave Pix do criador. O bot **só envia a chave quando alguém pede** (pix, chave, pagar...), nunca ao dono nem ao criador. Troque ou desligue com `/criador pix`. Um CPF aqui fica visível para quem pedir. |
-| `NUMERO_PATROA`, `NOME_PATROA`, `PATROA_ESPERA_HORAS` | ⛔ Opcional | A patroa (esposa do dono): número com DDI e DDD (ex.: `558699028292`), nome (ex.: `Paulina`) e horas de silêncio depois da primeira resposta (padrão `5`). Também com `/criador patroa`. |
+| `NUMERO_PATROA`, `NOME_PATROA` | ⛔ Opcional | A patroa (esposa do dono), a quem o bot **nunca responde**: número com DDI e DDD (ex.: `558699028292`) e nome (ex.: `Paulina`). Também com `/criador patroa`. |
 | `CONTATOS_VIP` | ⛔ Opcional | Contatos reconhecidos e tratados com respeito, no formato `número=descrição;número=descrição` (ex.: `5511962008294=Paula, irmã do PH e chefe`). Também com `/criador vip`. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
@@ -170,7 +170,7 @@ A IA não aprende sozinha entre conversas, então a variedade vem do prompt: a c
 
 ### Comandos do criador (`/criador`)
 
-Novos: `/criador patroa [número nome | espera <horas> | remover]`, `/criador config` (painel de tudo que está configurado), `/criador ligar` / `desligar`, `/criador modelo [nome]` (troca o modelo do Gemini com o bot no ar), `/criador pix [chave|desligar]`, `/criador vip <número> <descrição>`, `/criador vips`, `/criador vip remover <número>`, `/criador tom <texto|limpar>` (muda o jeito de falar com todos), `/criador ficha <número>` e `/criador reiniciar`. O dono e o criador também ganharam `/calc`, `/hora`, `/clima`, `/noticias`, `/cambio`, `/traduzir`, `/dado`, `/moeda` e `/sorteio` (veja `/ajuda`).
+Novos: `/criador patroa [número nome | remover]` (o bot nunca responde a ela), `/criador config` (painel de tudo que está configurado), `/criador ligar` / `desligar`, `/criador modelo [nome]` (troca o modelo do Gemini com o bot no ar), `/criador pix [chave|desligar]`, `/criador vip <número> <descrição>`, `/criador vips`, `/criador vip remover <número>`, `/criador tom <texto|limpar>` (muda o jeito de falar com todos), `/criador ficha <número>` e `/criador reiniciar`. O dono e o criador também ganharam `/calc`, `/hora`, `/clima`, `/noticias`, `/cambio`, `/traduzir`, `/dado`, `/moeda` e `/sorteio` (veja `/ajuda`).
 
 Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bot é o do criador) usa estes comandos, **sempre em conversa privada**. Para qualquer outra pessoa, `/criador` é texto comum. O assistente também sabe que está falando com o criador.
 

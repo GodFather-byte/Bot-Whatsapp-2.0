@@ -43,7 +43,7 @@ test('the Gemini system prompt carries the assistant rules, the date and the own
   assert.match(system, /Tom de mafioso de filme, mas SÉRIO/);
 });
 
-test('contacts and the owner get a serious mafioso, VIPs a sweet tone, the patroa full reverence and only the creator keeps the humor', async () => {
+test('contacts and the owner get a serious mafioso, VIPs a sweet tone and only the creator keeps the humor', async () => {
   const requests = [];
   const gemini = createGeminiService({
     model: 'm',
@@ -71,13 +71,6 @@ test('contacts and the owner get a serious mafioso, VIPs a sweet tone, the patro
   assert.match(vip, /Tom fofo, doce e carinhoso/);
   assert.match(vip, /o jeito de falar é: doce e carinhoso/);
   assert.doesNotMatch(vip, /mafioso SÉRIO|Tom de mafioso/);
-
-  const patroa = await systemFor({ patroa: 'Paulina, esposa do chefe' });
-  assert.match(patroa, /Quem escreve agora é Paulina, esposa do chefe, a patroa da família/);
-  assert.match(patroa, /"patroa" ou "senhora"/);
-  assert.match(patroa, /Tom de máxima reverência/);
-  assert.match(patroa, /o jeito de falar é: reverente e cerimonioso/);
-  assert.doesNotMatch(patroa, /fofo, doce|Tom de mafioso/);
 
   const creator = await systemFor({ isCreator: true });
   assert.match(creator, /meu criador/);

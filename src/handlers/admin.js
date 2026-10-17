@@ -3,6 +3,7 @@ import { AWAY_MODES } from '../services/presence.js';
 import { formatDateTime, parseBusinessHours } from '../utils/time.js';
 import { toWhatsAppFormat } from '../utils/format.js';
 import { findChatJid, parseDuration, parseNumber } from './creator.js';
+import { resolvePatroa } from '../assistant/extras.js';
 
 const adminHelp = [
   'Comandos do dono (escreva na conversa "Você", consigo mesmo):',
@@ -40,8 +41,8 @@ async function updateTextSetting(storage, key, value, label) {
   return clear ? `${label} removido(a).` : `${label} atualizado(a).`;
 }
 
-async function broadcast({ sock, storage, text, logger, delayMs, ownerJid }) {
-  const contacts = (await storage.listContacts()).filter((jid) => jid !== ownerJid);
+async function broadcast({ sock, storage, text, logger, delayMs, ownerJid, skipNumber }) {
+  const contacts = (await storage.listContacts()).filter((jid) => jid !== ownerJid && !(skipNumber && normalizePhoneNumber(jid) === skipNumber));
   let sent = 0;
   for (const jid of contacts) {
     try {
@@ -68,7 +69,8 @@ export async function handleAdminCommand(argument, {
   dailyLimit,
   timeZone = 'America/Sao_Paulo',
   presence,
-  gemini
+  gemini,
+  config = {}
 }) {
   const [, subcommand = '', rest = ''] = argument.match(/^(\S*)\s*([\s\S]*)$/) || [];
   const value = rest.trim();
@@ -138,9 +140,11 @@ export async function handleAdminCommand(argument, {
     }
     case 'aviso': {
       if (!value) return 'Informe o texto do aviso: /admin aviso <texto>';
-      const total = (await storage.listContacts()).filter((jid) => jid !== remoteJid).length;
+      // A patroa nunca recebe nada do bot, nem avisos em massa.
+      const skipNumber = resolvePatroa(config.patroa, (await storage.getBotSettings()).patroa)?.number;
+      const total = (await storage.listContacts()).filter((jid) => jid !== remoteJid && !(skipNumber && normalizePhoneNumber(jid) === skipNumber)).length;
       if (!total) return 'Este número ainda não tem contatos para avisar.';
-      broadcast({ sock, storage, text: value, logger, delayMs: broadcastDelayMs, ownerJid: remoteJid })
+      broadcast({ sock, storage, text: value, logger, delayMs: broadcastDelayMs, ownerJid: remoteJid, skipNumber })
         .then(({ sent }) => sock.sendMessage(remoteJid, { text: `Aviso enviado para ${sent} de ${total} contatos.` }))
         .catch((error) => logger.error({ err: error }, 'Falha ao enviar avisos'));
       return `Enviando o aviso para ${total} contatos, um a cada ${Math.round(broadcastDelayMs / 1000)}s. Aviso quando terminar.`;
