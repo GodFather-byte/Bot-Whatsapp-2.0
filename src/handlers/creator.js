@@ -10,6 +10,12 @@ const creatorHelp = [
   '/criador limpar <número> — apaga o histórico da conversa com esse número',
   '/criador falar <número> <texto> — o bot envia a mensagem para esse número',
   '/criador silencio [número] <tempo> — o bot para de responder aos contatos (ex.: 2 minutos, 30 min, 1 hora); com número, só essa conversa; "cancelar" volta ao normal. Sem número, ele também se cala com você até você mandar /pode falar meu filho',
+  '/criador pix [chave | desligar] — mostra, troca ou desliga a chave Pix que o bot solta de brincadeira no fim das respostas',
+  '/criador vip <número> <descrição> — o bot passa a reconhecer esse número (ex.: /criador vip 5511999999999 irmã do PH e chefe)',
+  '/criador vips — lista os contatos reconhecidos; /criador vip remover <número> tira um',
+  '/criador tom <texto> | limpar — muda o jeito de falar do bot com todos (ex.: bem debochado, ou só em rimas)',
+  '/criador ficha <número> — resumo do contato: mensagens trocadas, última conversa, se é VIP ou está bloqueado',
+  '/criador reiniciar — reinicia o bot (o Render o sobe de novo em segundos)',
   '/admin ajuda — o criador também tem todas as ordens de dono'
 ].join('\n');
 
@@ -56,7 +62,9 @@ export async function handleCreatorCommand(argument, {
   uptimeSeconds = () => process.uptime(),
   memoryUsage = () => process.memoryUsage(),
   nodeVersion = process.version,
-  presence
+  presence,
+  config = {},
+  exit = () => process.exit(0)
 }) {
   const [, subcommand = '', rest = ''] = argument.match(/^(\S*)\s*([\s\S]*)$/) || [];
   const value = rest.trim();
@@ -126,6 +134,74 @@ export async function handleCreatorCommand(argument, {
       if (!minutes) return usage;
       const until = presence.silence({ chatJid, minutes });
       return `Bico calado ${target ? `na conversa com ${target}` : 'com todos os contatos e com você'} até ${formatDateTime(new Date(until), timeZone)}. Para eu voltar a falar com você: /pode falar meu filho. Para encerrar tudo antes: /criador silencio cancelar`;
+    }
+    case 'pix': {
+      const settings = await storage.getBotSettings();
+      if (!value) {
+        const key = settings.pix === 'desligado' ? '' : (settings.pix || config.pixKey || '');
+        return key ? `Pix ativo: ${key}\nPara trocar: /criador pix <chave>. Para desligar: /criador pix desligar` : 'O Pix está desligado. Para ligar: /criador pix <chave>';
+      }
+      if (['desligar', 'desligado', 'off', 'remover', 'limpar'].includes(value.toLowerCase())) {
+        await storage.updateBotSettings({ pix: 'desligado' });
+        return 'Pix desligado: o bot não solta mais a brincadeira do Pix.';
+      }
+      if (value.length > 100 || /\s/.test(value)) return 'Chave inválida: informe só a chave, sem espaços (CPF, telefone, e-mail ou chave aleatória).';
+      await storage.updateBotSettings({ pix: value });
+      return 'Pix atualizado. O bot passa a soltar a brincadeira no fim das respostas aos contatos (menos aos VIPs e a você).';
+    }
+    case 'vip': {
+      const [first = '', ...others] = value.split(/\s+/);
+      const settings = await storage.getBotSettings();
+      const vips = { ...(settings.vips || {}) };
+      if (['remover', 'tirar', 'apagar'].includes(first.toLowerCase())) {
+        const number = parseNumber(others[0]);
+        if (!number) return 'Use: /criador vip remover 5511999999999';
+        if (!vips[number]) return config.vipContacts?.[number] ? `${number} vem da configuração (CONTATOS_VIP); tire de lá.` : `${number} não era VIP.`;
+        delete vips[number];
+        await storage.updateBotSettings({ vips: Object.keys(vips).length ? vips : null });
+        return `${number} não é mais VIP.`;
+      }
+      const number = parseNumber(first);
+      const description = others.join(' ').trim();
+      if (!number || !description) return 'Use: /criador vip 5511999999999 irmã do PH e chefe';
+      if (description.length > 80) return 'Descrição longa demais: até 80 caracteres.';
+      vips[number] = description;
+      await storage.updateBotSettings({ vips });
+      return `${number} agora é reconhecido como: ${description}. O bot trata essa pessoa com respeito e não manda a brincadeira do Pix para ela.`;
+    }
+    case 'vips': {
+      const settings = await storage.getBotSettings();
+      const entries = Object.entries({ ...(config.vipContacts || {}), ...(settings.vips || {}) });
+      return entries.length ? `Contatos reconhecidos:\n${entries.map(([number, description]) => `- ${number}: ${description}`).join('\n')}` : 'Nenhum VIP ainda. Use /criador vip <número> <descrição>.';
+    }
+    case 'tom': {
+      if (!value) return `Tom atual: ${(await storage.getBotSettings()).tom || '(padrão de consigliere)'}\nPara mudar: /criador tom <texto>. Para voltar: /criador tom limpar`;
+      if (['limpar', 'desligar', 'remover', 'padrao', 'padrão'].includes(value.toLowerCase())) {
+        await storage.updateBotSettings({ tom: null });
+        return 'Tom restaurado: o bot volta ao jeito padrão de consigliere.';
+      }
+      if (value.length > 300) return 'Texto longo demais: até 300 caracteres.';
+      await storage.updateBotSettings({ tom: value });
+      return `Tom atualizado: ${value}`;
+    }
+    case 'ficha': {
+      const number = parseNumber(value);
+      if (!number) return 'Use: /criador ficha 5511999999999';
+      const chatJid = await findChatJid(storage, number);
+      const [history, blocked, settings] = await Promise.all([storage.getHistory(chatJid, 30), storage.isBlocked([number]), storage.getBotSettings()]);
+      const vip = { ...(config.vipContacts || {}), ...(settings.vips || {}) }[number];
+      const last = history.at(-1);
+      return [
+        `Ficha de ${number}`,
+        `Mensagens guardadas: ${history.length}${history.length === 30 ? '+' : ''}`,
+        last?.timestamp ? `Última conversa: ${formatDateTime(new Date(last.timestamp), timeZone)}` : 'Ainda não conversou com o bot.',
+        `VIP: ${vip || 'não'}`,
+        `Bloqueado: ${blocked ? 'sim' : 'não'}`
+      ].join('\n');
+    }
+    case 'reiniciar': {
+      setTimeout(exit, 1500).unref?.();
+      return 'Reiniciando em instantes, meu criador. 🕴️ Volto já, já.';
     }
     default:
       return `Comando de criador desconhecido.\n\n${creatorHelp}`;
