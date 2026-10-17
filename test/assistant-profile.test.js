@@ -12,8 +12,7 @@ test('the assistant is called Bot PH Zeus and speaks for the owner without inven
   assert.match(prompt, /primeira mensagem da conversa com Ana/);
   assert.match(prompt, /Nunca invente nada sobre Paulo/);
   assert.match(prompt, /código de verificação/);
-  assert.match(prompt, /consigliere/);
-  assert.match(prompt, /nunca ameace/);
+  assert.match(prompt, /nunca ameace/i);
   assert.doesNotMatch(buildAssistantPrompt({ ownerName: 'Paulo' }), /primeira mensagem/);
   assert.match(buildAssistantPrompt({ isGroup: true }), /grupo/);
   assert.match(buildAssistantPrompt({ ownerName: 'Paulo', withOwner: true }), /próprio dono/);
@@ -39,7 +38,43 @@ test('the Gemini system prompt carries the assistant rules, the date and the own
   assert.match(system, /assistente pessoal de Paulo/);
   assert.match(system, /Data de hoje: sexta, 02\/10\/2026/);
   assert.match(system, /Estou em reunião\./);
-  assert.match(system, /Tom de máfia/);
+  assert.match(system, /Tom de homem de negócios/);
+});
+
+test('contacts and the owner get a serious businessman tone, VIPs a sweet one, and only the creator keeps the mafia joke', async () => {
+  const requests = [];
+  const gemini = createGeminiService({
+    model: 'm',
+    random: () => 0,
+    ai: { models: { generateContent: async (request) => { requests.push(request); return { text: 'ok' }; } } }
+  });
+  const systemFor = async (assistant) => {
+    await gemini.generate({ text: 'oi', assistant });
+    return requests.at(-1).config.systemInstruction;
+  };
+
+  const contact = await systemFor({ firstContact: true });
+  assert.match(contact, /homem de negócios/);
+  assert.match(contact, /sem piadas/);
+  assert.match(contact, /o jeito de falar é: objetivo e profissional/);
+  assert.doesNotMatch(contact, /consigliere|máfia|mafioso|meu amigo|patrão/i);
+
+  const owner = await systemFor({ withOwner: true });
+  assert.match(owner, /seriedade e profissionalismo/);
+  assert.match(owner, /Tom de homem de negócios/);
+  assert.doesNotMatch(owner, /consigliere|máfia|mafioso/i);
+
+  const vip = await systemFor({ vip: 'Paula, irmã do PH e chefe' });
+  assert.match(vip, /Quem escreve agora é Paula, irmã do PH e chefe/);
+  assert.match(vip, /fofo, doce e carinhoso/);
+  assert.match(vip, /Tom fofo, doce e carinhoso/);
+  assert.match(vip, /o jeito de falar é: doce e carinhoso/);
+  assert.doesNotMatch(vip, /homem de negócios|mafioso|consigliere/i);
+
+  const creator = await systemFor({ isCreator: true });
+  assert.match(creator, /meu criador/);
+  assert.match(creator, /Tom de máfia de filme/);
+  assert.match(creator, /o jeito de falar é: direto ao ponto, em uma frase seca/);
 });
 
 test('presence: the owner counts as online while typing, and the assistant steps back from chats they answer', () => {

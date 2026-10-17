@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { toolDeclarations, executeTool } from '../handlers/tools.js';
-import { buildAssistantPrompt, VARIATION_STYLES } from '../assistant/profile.js';
+import { buildAssistantPrompt, TONE_INSTRUCTIONS, toneFor, variationStylesFor } from '../assistant/profile.js';
 import { WEEKDAY_LABELS, zonedParts } from '../utils/time.js';
 
 // A persona só ajusta o tom: as regras do assistente (buildAssistantPrompt) vão em toda resposta.
@@ -40,6 +40,8 @@ function todayLine(now, timeZone) {
   return `Data de hoje: ${WEEKDAY_LABELS[local.weekday]}, ${date}, fuso ${timeZone}.`;
 }
 
+const pickStyle = (styles, random) => styles[Math.floor(random() * styles.length)];
+
 // Começo das últimas respostas do assistente, para o prompt pedir que a próxima comece diferente.
 function recentOpenings(history = [], count = 3) {
   return history
@@ -51,7 +53,10 @@ function recentOpenings(history = [], count = 3) {
 
 function instructionFor(user, extraInstruction, { assistant, now, timeZone }) {
   const persona = user?.persona || 'padrao';
-  const base = SYSTEM_INSTRUCTIONS[persona] || SYSTEM_INSTRUCTIONS.padrao;
+  // Na persona padrão o tom depende de com quem o assistente fala: sério com os contatos, carinhoso com VIPs e de consigliere com o criador.
+  const base = persona === 'padrao'
+    ? (TONE_INSTRUCTIONS[toneFor(assistant)] || SYSTEM_INSTRUCTIONS.padrao)
+    : (SYSTEM_INSTRUCTIONS[persona] || SYSTEM_INSTRUCTIONS.padrao);
   const language = user?.idioma ? `Responda sempre no idioma ${user.idioma}.` : '';
   const extra = extraInstruction ? `\nInformações e instruções do dono deste número (siga e pode usar): ${extraInstruction}` : '';
   const format = '\nVocê está no WhatsApp: use *negrito*, _itálico_ e listas com "-"; evite tabelas e títulos com #.';
@@ -78,7 +83,7 @@ export function createGeminiService({
   // O jeito sorteado é de consigliere: só vale na persona padrão, para não brigar com /persona formal, técnico etc.
   const assistantFor = (history, assistant, user) => ({
     ownerName,
-    variation: !user?.persona || user.persona === 'padrao' ? VARIATION_STYLES[Math.floor(random() * VARIATION_STYLES.length)] : '',
+    variation: !user?.persona || user.persona === 'padrao' ? pickStyle(variationStylesFor(assistant), random) : '',
     avoidOpenings: recentOpenings(history),
     ...assistant
   });

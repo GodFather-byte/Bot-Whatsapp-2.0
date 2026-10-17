@@ -19,8 +19,7 @@ const commandHelp = [
   '/clima <cidade> e /noticias <assunto> — precisam das chaves de clima e notícias',
   '/cambio <valor> <de> <para> — converte moedas (ex.: /cambio 100 usd brl)',
   '/traduzir <idioma> <texto> — traduz um texto (ex.: /traduzir inglês bom dia)',
-  '/dado [lados], /moeda e /sorteio a, b, c — decisões no acaso',
-  '/piada [assunto] — uma piada curta'
+  '/dado [lados], /moeda e /sorteio a, b, c — decisões no acaso'
 ].join('\n');
 
 const reminderHelp = [
@@ -117,12 +116,6 @@ export async function handleCommand(text, remoteJid, {
         assistant: { withOwner: true }
       }));
     }
-    case 'piada':
-      return toWhatsAppFormat(await gemini.generate({
-        text: `Conte uma piada curta e inédita${argument ? ` sobre: ${argument}` : ''}, sem ofender ninguém.`,
-        user: {},
-        assistant: { withOwner: true }
-      }));
     case 'reset':
       await storage.resetHistory(remoteJid);
       return 'Histórico da conversa apagado.';

@@ -140,7 +140,7 @@ test('the creator is always greeted as "meu criador"', () => {
 
 test('every answer gets a different way of speaking and avoids the recent openings', async () => {
   const { createGeminiService } = await import('../src/services/gemini.js');
-  const { VARIATION_STYLES } = await import('../src/assistant/profile.js');
+  const { SERIOUS_STYLES } = await import('../src/assistant/profile.js');
   const requests = [];
   const draws = [0, 0.99];
   const gemini = createGeminiService({
@@ -158,20 +158,21 @@ test('every answer gets a different way of speaking and avoids the recent openin
   await gemini.generate({ text: 'oi', user: { persona: 'formal' } });
 
   const [first, second, formal] = requests.map((request) => request.config.systemInstruction);
-  assert.ok(first.includes(VARIATION_STYLES[0]));
-  assert.ok(second.includes(VARIATION_STYLES.at(-1)));
+  assert.ok(first.includes(SERIOUS_STYLES[0]), 'contatos comuns têm jeitos de falar sérios');
+  assert.ok(second.includes(SERIOUS_STYLES.at(-1)));
   assert.notEqual(first, second);
   assert.match(first, /começaram assim: "Meu amigo, a família agradece o"/);
   assert.doesNotMatch(formal, /o jeito de falar é/);
 });
 
-test('contacts get a real conversation in a mafia tone, not just "I will tell the boss"', () => {
+test('contacts get a real, serious conversation, not just "I will tell the boss"', () => {
   const prompt = buildAssistantPrompt({ ownerName: 'Paulo' });
-  assert.match(prompt, /Conversar de verdade/);
-  assert.match(prompt, /tom mafioso de filme/);
+  assert.match(prompt, /Conversar e atender de verdade/);
+  assert.match(prompt, /homem de negócios/);
+  assert.doesNotMatch(prompt, /mafioso|consigliere/i);
   assert.match(prompt, /não repita isso em toda resposta/);
   assert.match(prompt, /Nunca invente nada sobre Paulo/);
-  assert.match(prompt, /nunca ameace/);
+  assert.match(prompt, /nunca ameace/i);
 });
 
 test('when a human answers a chat the assistant stops talking there, even in the default "on" mode', async () => {
