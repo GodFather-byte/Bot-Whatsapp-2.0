@@ -5,7 +5,7 @@ import { handleCreatorCommand } from './creator.js';
 import { fetchLinkContent, findUrl } from '../services/links.js';
 import { createPresenceTracker } from '../services/presence.js';
 import { splitMessage, toWhatsAppFormat } from '../utils/format.js';
-import { findVip, mergeVips, pixFooter } from '../assistant/extras.js';
+import { asksForPix, findVip, mergeVips, pixFooter } from '../assistant/extras.js';
 
 const PIX_OFF = 'desligado';
 const rateLimitedMessage = 'Calma, meu amigo. A família não é tão rápida assim. Aguarde um pouco. 🥃';
@@ -212,7 +212,17 @@ export function createMessageHandler({
     // Contatos reconhecidos (ex.: a irmã do dono) são tratados com respeito e não recebem a brincadeira do Pix.
     const vip = isOwner ? null : findVip(mergeVips(config?.vipContacts, settings.vips), senderNumbers);
     const pixKey = settings.pix === PIX_OFF ? '' : (settings.pix || config?.pixKey || '');
-    const showPix = Boolean(pixKey) && !isOwner && !vip && !isGroup;
+    // A chave só sai quando alguém pede; de vez em quando (e nunca para VIPs) sai só uma piada sobre o Pix, sem a chave.
+    const pixAllowed = Boolean(pixKey) && !isOwner && !isGroup;
+    const pixFooterText = pixAllowed
+      ? pixFooter({
+        key: pixKey,
+        asked: asksForPix(media?.text || text),
+        allowJoke: !vip,
+        jokeChance: (config?.pixJokePercent ?? 20) / 100
+      })
+      : '';
+    const showPix = pixAllowed;
     const extraInstruction = [settings.instrucoes, settings.tom && `Tom pedido pelo criador: ${settings.tom}`].filter(Boolean).join('\n');
     const generateResponse = gemini.stream || gemini.generate;
     const answer = await generateResponse.call(gemini, {
@@ -231,7 +241,7 @@ export function createMessageHandler({
     }
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
 
-    await send(sock, remoteJid, showPix ? `${answer}\n\n${pixFooter(pixKey)}` : answer, isGroup ? msg : undefined);
+    await send(sock, remoteJid, pixFooterText ? `${answer}\n\n${pixFooterText}` : answer, isGroup ? msg : undefined);
     if (firstContact && notifyOwner && !isGroup) await notifyOwners(sock, remoteJid, msg, senderNumbers, userText, answer);
     stats.recentMessages.unshift({
       de: remoteJid,

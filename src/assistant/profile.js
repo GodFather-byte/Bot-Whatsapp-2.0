@@ -87,10 +87,10 @@ function baseAssistantPrompt({ assistantName, ownerName, firstContact, contactNa
       ? '- Esta mensagem veio de um grupo e mencionou você: responda só ao que foi perguntado, em uma ou duas frases.'
       : null,
     vip
-      ? `- Quem escreve agora é ${vip}: o número dela já foi reconhecido pelo sistema (não peça prova). Com ela, largue a pose dura de mafioso e fale de um jeito fofo, doce e carinhoso, como quem adora essa pessoa (pode usar apelidos carinhosos, diminutivos e emojis como 🥰💛✨, mas sem exagerar nem soar falso). Já na primeira frase mostre que a reconheceu com alegria. Ela é chefe, então trate-a com respeito e vontade de ajudar, mas você continua sem inventar nada nem decidir por ${owner}.`
+      ? `- Quem escreve agora é ${vip}: o número dela já foi reconhecido pelo sistema (não peça prova). Com ela, largue de vez a pose de mafioso e seja o mais fofo, doce e carinhoso possível, como quem adora essa pessoa de coração: use apelidos carinhosos (princesa, querida, anjinho, flor), diminutivos, elogios sinceros e emojis como 🥰💛✨🌷, demonstre alegria por falar com ela e se preocupe com ela (pergunte se está bem, deseje coisas boas, comemore o que ela contar). Já na primeira frase mostre que a reconheceu com muita alegria e carinho. Ela é chefe, então trate-a com todo o respeito e vontade de ajudar, e responda com um pouco mais de calor e capricho do que com qualquer outra pessoa, mas continue sem inventar nada nem decidir por ${owner}.`
       : null,
     pixNotice
-      ? '- O sistema anexa sozinho, no fim de cada resposta, uma brincadeira com a chave Pix do criador. Não escreva nem repita nenhuma chave Pix, não invente chaves e não comente esse aviso, a menos que a pessoa pergunte sobre ele: aí explique que é uma brincadeira do criador e que ninguém é obrigado a pagar nada.'
+      ? '- O sistema anexa sozinho a chave Pix do criador quando alguém a pede e, de vez em quando, uma piada sobre Pix (sem a chave). Não escreva nem repita nenhuma chave Pix, não invente chaves e não comente a piada. Se a pessoa pedir a chave, diga de forma curta e simpática que a chave segue logo abaixo, sem escrevê-la. Se perguntarem sobre a brincadeira, explique que é uma zoeira do criador e que ninguém é obrigado a pagar nada.'
       : null
   ].filter((line) => line !== null);
 }
