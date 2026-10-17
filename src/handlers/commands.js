@@ -1,6 +1,7 @@
 import { SYSTEM_INSTRUCTIONS } from '../services/gemini.js';
 import { formatDateTime, parseReminder, WEEKDAY_LABELS } from '../utils/time.js';
 import { toWhatsAppFormat } from '../utils/format.js';
+import { executeTool } from './tools.js';
 
 const commandHelp = [
   '/reset — limpa o histórico da conversa',
@@ -12,7 +13,14 @@ const commandHelp = [
   '/imagem <descrição> — gera uma imagem com o Gemini',
   '/lembrete <quando> <mensagem> — agenda um lembrete (ex.: 14:30, amanhã 09:00, 25/12 10:00, em 30 min, todo dia 08:00, toda segunda 09:00)',
   '/lembretes — lista seus lembretes',
-  '/cancelar_lembrete <id> — cancela um lembrete'
+  '/cancelar_lembrete <id> — cancela um lembrete',
+  '/calc <conta> — calcula (ex.: /calc 2*(3+4))',
+  '/hora [fuso] — hora de qualquer fuso (ex.: /hora Europe/Lisbon)',
+  '/clima <cidade> e /noticias <assunto> — precisam das chaves de clima e notícias',
+  '/cambio <valor> <de> <para> — converte moedas (ex.: /cambio 100 usd brl)',
+  '/traduzir <idioma> <texto> — traduz um texto (ex.: /traduzir inglês bom dia)',
+  '/dado [lados], /moeda e /sorteio a, b, c — decisões no acaso',
+  '/piada [assunto] — uma piada curta'
 ].join('\n');
 
 const reminderHelp = [
@@ -30,12 +38,24 @@ function describeRecurrence(recurrence) {
   return recurrence.tipo === 'diaria' ? ' (todo dia)' : ` (toda ${WEEKDAY_LABELS[recurrence.diaSemana]})`;
 }
 
+// Ferramentas que viram comando: o erro vira uma mensagem legível em vez de derrubar a resposta.
+async function runTool(name, args, apiKeys) {
+  try {
+    const result = await executeTool(name, args, { apiKeys });
+    return result.erro ? result.erro : result;
+  } catch (error) {
+    return `Não consegui: ${error.message}`;
+  }
+}
+
 export async function handleCommand(text, remoteJid, {
   storage,
   gemini,
   stats,
   timeZone = 'America/Sao_Paulo',
-  now = () => new Date()
+  now = () => new Date(),
+  apiKeys = {},
+  random = Math.random
 }) {
   const match = text.match(/^\/([a-záéíóúç_]+)(?:\s+([\s\S]*))?$/i);
   if (!match) return null;
@@ -46,6 +66,63 @@ export async function handleCommand(text, remoteJid, {
     case 'ajuda':
     case 'help':
       return `Comandos disponíveis:\n${commandHelp}`;
+    case 'dado': {
+      const sides = argument ? Number.parseInt(argument, 10) : 6;
+      if (!Number.isInteger(sides) || sides < 2 || sides > 1000) return 'Use /dado [lados], de 2 a 1000. Ex.: /dado 20';
+      return `🎲 Caiu ${Math.floor(random() * sides) + 1} (dado de ${sides} lados)`;
+    }
+    case 'moeda':
+      return random() < 0.5 ? '🪙 Deu *cara*.' : '🪙 Deu *coroa*.';
+    case 'sorteio': {
+      const options = argument.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+      if (options.length < 2) return 'Use /sorteio opção 1, opção 2, opção 3 (separe com vírgula).';
+      return `🎯 O destino escolheu: *${options[Math.floor(random() * options.length)]}*`;
+    }
+    case 'calc': {
+      if (!argument) return 'Use /calc 2*(3+4)';
+      const result = await runTool('calcular_expressao', { expr: argument }, apiKeys);
+      return typeof result === 'string' ? result : `🧮 ${argument} = *${Number(result.resultado.toFixed(10))}*`;
+    }
+    case 'hora': {
+      const result = await runTool('consultar_horario', { fuso: argument || timeZone }, apiKeys);
+      return typeof result === 'string' ? `${result} Use um fuso como America/Sao_Paulo ou Europe/Lisbon.` : `🕒 ${result.horario}`;
+    }
+    case 'clima': {
+      if (!argument) return 'Use /clima <cidade>. Ex.: /clima Osasco';
+      const result = await runTool('obter_clima', { cidade: argument }, apiKeys);
+      return typeof result === 'string' ? result : `🌤️ ${result.cidade}: ${result.temperatura}°C, ${result.descricao}`;
+    }
+    case 'noticias':
+    case 'notícias': {
+      if (!argument) return 'Use /noticias <assunto>. Ex.: /noticias futebol';
+      const result = await runTool('buscar_noticias', { topico: argument }, apiKeys);
+      if (typeof result === 'string') return result;
+      return result.artigos.length
+        ? `📰 *${argument}*\n${result.artigos.slice(0, 5).map(({ title, url }) => `- ${title}\n  ${url}`).join('\n')}`
+        : 'Nada encontrado sobre esse assunto.';
+    }
+    case 'cambio':
+    case 'câmbio': {
+      const [, value, from, to] = argument.match(/^(\d+(?:[.,]\d+)?)\s*([a-z]{3})\s+(?:para\s+)?([a-z]{3})$/i) || [];
+      if (!value) return 'Use /cambio <valor> <de> <para>. Ex.: /cambio 100 usd brl';
+      const result = await runTool('converter_moeda', { valor: Number(value.replace(',', '.')), de: from, para: to }, apiKeys);
+      return typeof result === 'string' ? result : `💱 ${result.valor} ${result.de} = *${result.convertido} ${result.para}*`;
+    }
+    case 'traduzir': {
+      const [, language, content] = argument.match(/^(\S+)\s+([\s\S]+)$/) || [];
+      if (!language) return 'Use /traduzir <idioma> <texto>. Ex.: /traduzir inglês bom dia, tudo bem?';
+      return toWhatsAppFormat(await gemini.generate({
+        text: `Traduza o texto a seguir para ${language}. Responda só com a tradução, sem comentários.\n\n${content}`,
+        user: {},
+        assistant: { withOwner: true }
+      }));
+    }
+    case 'piada':
+      return toWhatsAppFormat(await gemini.generate({
+        text: `Conte uma piada curta e inédita${argument ? ` sobre: ${argument}` : ''}, sem ofender ninguém.`,
+        user: {},
+        assistant: { withOwner: true }
+      }));
     case 'reset':
       await storage.resetHistory(remoteJid);
       return 'Histórico da conversa apagado.';

@@ -57,6 +57,17 @@ function positiveInteger(value, fallback, variable) {
 
 const DEFAULT_CREATOR_NUMBER = '5511915168336';
 
+// "5511999999999=irmã do PH e chefe; 5511888888888=amigo": número=descrição, separados por ponto e vírgula.
+export function parseVipContacts(value = '') {
+  const vips = {};
+  for (const entry of value.split(';')) {
+    const [number, ...description] = entry.split('=');
+    const digits = (number || '').replace(/\D/g, '');
+    if (digits.length >= 10 && digits.length <= 15) vips[digits] = description.join('=').trim() || 'contato especial';
+  }
+  return vips;
+}
+
 export function loadConfig(env = process.env) {
   const port = positiveInteger(env.PORT, 3000, 'PORT');
   const reminderCheckInterval = positiveInteger(
@@ -82,6 +93,10 @@ export function loadConfig(env = process.env) {
     ownerNumbers: parseAllowedNumbers(env.NUMERO_DONO, 'NUMERO_DONO'),
     // O criador do bot tem comandos próprios (/criador) e o assistente sabe quem ele é. Configure NUMERO_CRIADOR para trocar.
     creatorNumbers: parseAllowedNumbers(env.NUMERO_CRIADOR ?? DEFAULT_CREATOR_NUMBER, 'NUMERO_CRIADOR'),
+    // Chave Pix do criador, mostrada de brincadeira no fim das respostas. Também pode ser trocada com /criador pix.
+    pixKey: (env.PIX_CHAVE || '').trim(),
+    // Contatos que o assistente reconhece e trata com respeito, como a irmã do dono. Também gerenciados com /criador vip.
+    vipContacts: parseVipContacts(env.CONTATOS_VIP),
     timeZone: parseTimeZone(env.FUSO_HORARIO),
     messageDebounceMs: nonNegativeInteger(env.JUNTAR_MENSAGENS_MS, 2500, 'JUNTAR_MENSAGENS_MS'),
     groupsEnabled: parseBoolean(env.GRUPOS_ATIVADOS, false),

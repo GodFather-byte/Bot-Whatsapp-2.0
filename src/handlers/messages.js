@@ -5,6 +5,9 @@ import { handleCreatorCommand } from './creator.js';
 import { fetchLinkContent, findUrl } from '../services/links.js';
 import { createPresenceTracker } from '../services/presence.js';
 import { splitMessage, toWhatsAppFormat } from '../utils/format.js';
+import { findVip, mergeVips, pixFooter } from '../assistant/extras.js';
+
+const PIX_OFF = 'desligado';
 const rateLimitedMessage = 'Calma, meu amigo. A família não é tão rápida assim. Aguarde um pouco. 🥃';
 const failureMessage = 'Houve um contratempo nos negócios da família. Tente novamente em instantes. 🕴️';
 const oneDayAgo = () => Date.now() - 86_400_000;
@@ -206,14 +209,19 @@ export function createMessageHandler({
     await sock.sendPresenceUpdate('composing', remoteJid);
     const url = !media && findUrl(text);
     const parts = url ? await buildLinkParts(text, url, fetchLink, logger) : media?.parts;
+    // Contatos reconhecidos (ex.: a irmã do dono) são tratados com respeito e não recebem a brincadeira do Pix.
+    const vip = isOwner ? null : findVip(mergeVips(config?.vipContacts, settings.vips), senderNumbers);
+    const pixKey = settings.pix === PIX_OFF ? '' : (settings.pix || config?.pixKey || '');
+    const showPix = Boolean(pixKey) && !isOwner && !vip && !isGroup;
+    const extraInstruction = [settings.instrucoes, settings.tom && `Tom pedido pelo criador: ${settings.tom}`].filter(Boolean).join('\n');
     const generateResponse = gemini.stream || gemini.generate;
     const answer = await generateResponse.call(gemini, {
       history,
       text: userText,
       parts,
       user,
-      extraInstruction: settings.instrucoes,
-      assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner, isCreator }
+      extraInstruction: extraInstruction || undefined,
+      assistant: { firstContact, contactName: msg.pushName, isGroup, withOwner: isOwner, isCreator, vip: vip?.description, pixNotice: showPix }
     });
     await storage.addMessage({ remoteJid, role: 'user', conteudo: userText, tipo: media?.type || 'texto' });
     // O dono respondeu enquanto a IA pensava: um humano assumiu a conversa, então a resposta do assistente não é enviada.
@@ -223,7 +231,7 @@ export function createMessageHandler({
     }
     await storage.addMessage({ remoteJid, role: 'assistant', conteudo: answer, tipo: 'texto' });
 
-    await send(sock, remoteJid, answer, isGroup ? msg : undefined);
+    await send(sock, remoteJid, showPix ? `${answer}\n\n${pixFooter(pixKey)}` : answer, isGroup ? msg : undefined);
     if (firstContact && notifyOwner && !isGroup) await notifyOwners(sock, remoteJid, msg, senderNumbers, userText, answer);
     stats.recentMessages.unshift({
       de: remoteJid,
@@ -289,7 +297,7 @@ export function createMessageHandler({
 
   // /admin (ordens de dono), /criador (só o criador, em conversa privada) e os comandos comuns.
   function runCommand(text, { sock, remoteJid, isCreator = false }) {
-    const context = { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence };
+    const context = { storage, stats, getStatus, sock, remoteJid, logger, broadcastDelayMs, usage, dailyLimit, timeZone, presence, config };
     const adminMatch = text.match(/^\/admin\b\s*([\s\S]*)$/i);
     if (adminMatch) return handleAdminCommand(adminMatch[1], context);
     // "/pode falar meu filho": só o criador libera o bot para falar de novo na conversa dele depois de um /criador silencio.
@@ -301,7 +309,7 @@ export function createMessageHandler({
     const creatorMatch = text.match(/^\/criador\b\s*([\s\S]*)$/i);
     // Fora de conversa privada ou para quem não é o criador, "/criador" não existe: segue como comando desconhecido/texto comum.
     if (creatorMatch && isCreator && !remoteJid.endsWith('@g.us')) return handleCreatorCommand(creatorMatch[1], context);
-    return handleCommand(text, remoteJid, { storage, gemini, stats, timeZone });
+    return handleCommand(text, remoteJid, { storage, gemini, stats, timeZone, apiKeys: config?.toolApiKeys });
   }
 
   // Comandos escritos no próprio celular, na conversa "Você" (consigo mesmo). Quem tem acesso ao celular é o dono,

@@ -120,6 +120,8 @@ Troque o modo na conversa **"Você"**: `/admin ausente auto`, `/admin ausente on
 | `DASHBOARD_ENABLED` | ⛔ Opcional | Habilita `/dashboard`; requer `DASHBOARD_AUTH_TOKEN`. |
 | `REMINDER_CHECK_INTERVAL` | ⛔ Opcional | Intervalo de verificação em milissegundos. |
 | `NUMERO_CRIADOR` | ⛔ Opcional | Número do criador do bot (padrão `5511915168336`). O assistente o reconhece como criador e ele ganha os comandos `/criador` (e todos os `/admin`). Vazio desliga. |
+| `PIX_CHAVE` | ⛔ Opcional | Chave Pix do criador, solta de brincadeira no fim das respostas aos contatos (nunca ao dono, ao criador nem aos VIPs). Troque ou desligue com `/criador pix`. Um CPF aqui fica visível para todos os contatos. |
+| `CONTATOS_VIP` | ⛔ Opcional | Contatos reconhecidos e tratados com respeito, no formato `número=descrição;número=descrição` (ex.: `5511999999999=irmã do PH e chefe`). Também com `/criador vip`. |
 | `NOME_DONO` | Recomendado | Seu nome, usado pelo assistente para falar de você ("assistente pessoal de Paulo"). |
 | `AUSENTE_APOS_MIN` | ⛔ Opcional | Minutos sem enviar mensagens para você contar como ausente no modo `auto` (padrão `10`). |
 | `SILENCIAR_APOS_RESPOSTA_MIN` | ⛔ Opcional | Minutos em que o assistente se cala numa conversa depois que você responde (padrão `5`). |
@@ -149,6 +151,8 @@ Escreva na conversa **"Você"** (consigo mesmo) do WhatsApp, ou de um número de
 A IA não aprende sozinha entre conversas, então a variedade vem do prompt: a cada resposta o bot sorteia um jeito de falar (direto, irônico, caloroso, misterioso...) e recebe o começo das suas últimas respostas com a ordem de começar de outro jeito. Na persona padrão apenas; `/persona formal|técnico|engraçado` mantém o tom escolhido. Quando o criador escreve, o bot sempre o chama de "meu criador" (ou variações).
 
 ### Comandos do criador (`/criador`)
+
+Novos: `/criador pix [chave|desligar]`, `/criador vip <número> <descrição>`, `/criador vips`, `/criador vip remover <número>`, `/criador tom <texto|limpar>` (muda o jeito de falar com todos), `/criador ficha <número>` e `/criador reiniciar`. O dono e o criador também ganharam `/calc`, `/hora`, `/clima`, `/noticias`, `/cambio`, `/traduzir`, `/dado`, `/moeda`, `/sorteio` e `/piada` (veja `/ajuda`).
 
 Só o número de `NUMERO_CRIADOR` (ou a conversa "Você", quando o celular do bot é o do criador) usa estes comandos, **sempre em conversa privada**. Para qualquer outra pessoa, `/criador` é texto comum. O assistente também sabe que está falando com o criador.
 
